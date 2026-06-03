@@ -5,78 +5,110 @@ const path = require('path');
 
 console.log('🚀 Начинаем сборку установщика MurFlame Launcher...\n');
 
-// 1. Сборка Electron приложения
-console.log('📦 Сборка Electron приложения...');
+// 1. Сборка приложения
+console.log('📦 Шаг 1: Сборка приложения...');
 try {
-  execSync('npm run build:electron', { stdio: 'inherit' });
-  execSync('npm run build:vite', { stdio: 'inherit' });
+    execSync('npm run build', { stdio: 'inherit' });
+    console.log('✅ Приложение собрано');
 } catch (error) {
-  console.error('❌ Ошибка сборки:', error.message);
-  process.exit(1);
+    console.error('❌ Ошибка сборки приложения:', error.message);
+    process.exit(1);
 }
 
-// 2. Сборка через electron-builder
-console.log('\n🔧 Сборка исполняемых файлов через electron-builder...');
+// 2. Проверка наличия собранных файлов
+console.log('\n📦 Шаг 2: Проверка собранных файлов...');
+const mainFile = path.join(__dirname, 'dist-electron', 'main.js');
+if (!fs.existsSync(mainFile)) {
+    console.error('❌ Файл dist-electron/main.js не найден!');
+    process.exit(1);
+}
+console.log('✅ Файлы найдены');
+
+// 3. Сборка через electron-builder
+console.log('\n📦 Шаг 3: Сборка NSIS и Portable версий...');
 try {
-  execSync('npx electron-builder --win --x64 --dir', { stdio: 'inherit' });
+    // Очищаем старые сборки
+    if (fs.existsSync('release')) {
+        fs.rmSync('release', { recursive: true, force: true });
+    }
+    
+    execSync('npx electron-builder --win nsis portable --x64', { 
+        stdio: 'inherit',
+        env: { ...process.env, DEBUG: 'electron-builder' }
+    });
+    console.log('✅ NSIS и Portable версии созданы');
 } catch (error) {
-  console.error('❌ Ошибка electron-builder:', error.message);
-  process.exit(1);
+    console.error('❌ Ошибка electron-builder:', error.message);
+    console.log('\n💡 Попробуйте запустить вручную:');
+    console.log('   npx electron-builder --win nsis portable --x64');
 }
 
-// 3. Создаём папки
-if (!fs.existsSync('installer')) {
-  fs.mkdirSync('installer');
-}
-if (!fs.existsSync('assets')) {
-  fs.mkdirSync('assets');
-  console.log('⚠️  Создана папка assets. Добавьте туда icon.ico');
-}
-
-// 4. Проверка наличия иконки
-if (!fs.existsSync('assets/icon.ico')) {
-  console.log('⚠️  Иконка не найдена: assets/icon.ico');
-  console.log('   Создайте иконку 256x256 и сохраните как assets/icon.ico');
-}
-
-// 5. Проверка наличия LICENSE.txt
-if (!fs.existsSync('LICENSE.txt')) {
-  console.log('⚠️  Файл LICENSE.txt не найден');
-  console.log('   Создайте файл LICENSE.txt с текстом лицензии');
-}
-
-// 6. Путь к Inno Setup Compiler
-const isccPaths = [
-  'C:\\Program Files (x86)\\Inno Setup 6\\ISCC.exe',
-  'C:\\Program Files\\Inno Setup 6\\ISCC.exe',
-  'C:\\Program Files (x86)\\Inno Setup 5\\ISCC.exe',
-  'C:\\Program Files\\Inno Setup 5\\ISCC.exe',
+// 4. Проверка Inno Setup
+console.log('\n📦 Шаг 4: Проверка Inno Setup...');
+const innosetupPaths = [
+    'C:\\Program Files (x86)\\Inno Setup 6\\ISCC.exe',
+    'C:\\Program Files\\Inno Setup 6\\ISCC.exe',
+    'C:\\Program Files (x86)\\Inno Setup 7\\ISCC.exe',
+    'C:\\Program Files\\Inno Setup 7\\ISCC.exe',
 ];
 
 let isccPath = null;
-for (const p of isccPaths) {
-  if (fs.existsSync(p)) {
-    isccPath = p;
-    break;
-  }
+for (const p of innosetupPaths) {
+    if (fs.existsSync(p)) {
+        isccPath = p;
+        break;
+    }
 }
 
-if (!isccPath) {
-  console.error('\n❌ Inno Setup не найден!');
-  console.log('   Скачайте и установите Inno Setup с: https://jrsoftware.org/isdl.php');
-  console.log('   Убедитесь, что установлен в стандартную папку');
-  console.log('\n💡 Альтернатива: используйте electron-builder без Inno Setup');
-  console.log('   Запустите: npm run dist:electron');
-  process.exit(1);
+if (isccPath && fs.existsSync('installer.iss')) {
+    console.log('✅ Inno Setup найден:', isccPath);
+    console.log('\n🔧 Создание Inno Setup установщика...');
+    try {
+        execSync(`"${isccPath}" installer.iss`, { stdio: 'inherit' });
+        console.log('✅ Inno Setup установщик создан');
+    } catch (error) {
+        console.error('❌ Ошибка Inno Setup:', error.message);
+    }
+} else {
+    console.log('⚠️ Inno Setup не найден или файл installer.iss отсутствует');
+    if (!isccPath) {
+        console.log('   Скачайте Inno Setup: https://jrsoftware.org/isdl.php');
+    }
 }
 
-// 7. Компиляция установщика
-console.log('\n🔧 Компиляция установщика Inno Setup...');
-try {
-  execSync(`"${isccPath}" installer.iss`, { stdio: 'inherit' });
-  console.log('\n✅ Установщик успешно создан!');
-  console.log('   📁 Файл: installer/MurFlame_Setup.exe');
-  console.log('\n🎉 Готово! Запустите installer/MurFlame_Setup.exe для установки');
-} catch (error) {
-  console.error('❌ Ошибка при компиляции установщика:', error.message);
+// 5. Проверка результатов
+console.log('\n📁 Готовые файлы:');
+
+const releaseDir = path.join(__dirname, 'release');
+if (fs.existsSync(releaseDir)) {
+    const files = fs.readdirSync(releaseDir);
+    let hasFiles = false;
+    for (const file of files) {
+        if (file.endsWith('.exe')) {
+            const stats = fs.statSync(path.join(releaseDir, file));
+            const sizeMB = (stats.size / (1024 * 1024)).toFixed(2);
+            console.log(`   ✅ ${file} (${sizeMB} MB)`);
+            hasFiles = true;
+        }
+    }
+    if (!hasFiles) {
+        console.log('   ⚠️ Файлы не найдены в release/');
+        console.log('   Содержимое папки release:', fs.readdirSync(releaseDir));
+    }
+} else {
+    console.log('   ⚠️ Папка release не создана');
 }
+
+const installerDir = path.join(__dirname, 'installer');
+if (fs.existsSync(installerDir)) {
+    const files = fs.readdirSync(installerDir);
+    for (const file of files) {
+        if (file.endsWith('.exe')) {
+            const stats = fs.statSync(path.join(installerDir, file));
+            const sizeMB = (stats.size / (1024 * 1024)).toFixed(2);
+            console.log(`   ✅ ${file} (${sizeMB} MB)`);
+        }
+    }
+}
+
+console.log('\n🎉 Готово!');

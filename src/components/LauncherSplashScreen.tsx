@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Flame } from "lucide-react";
 
-export function LauncherSplashScreen({ onComplete }: { onComplete: () => void }) {
+export function LauncherSplashScreen({ onComplete, minDisplayTime = 0 }: { onComplete: () => void; minDisplayTime?: number }) {
   const [progress, setProgress] = useState(0);
   const [fadeOut, setFadeOut] = useState(false);
 

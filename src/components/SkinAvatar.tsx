@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 import { skinHeadUrl, SKIN_FALLBACK } from "../utils/skin";
-import type { Account } from "../vite-env.d";
+import type { Account } from "../types/api";
 
 interface SkinAvatarProps {
-  account: Pick<Account, "username" | "uuid" | "skinUrl" | "id">;
+  account: Pick<Account, "id" | "username" | "uuid" | "skinUrl" | "skinHeadUrl">;
   size?: number;
   className?: string;
 }

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { X, FolderOpen, Loader2 } from "lucide-react";
-import type { GameInstance, InstanceIcon } from "../vite-env.d";
+import type { GameInstance, InstanceIcon } from "../types/api";
 import { ICON_OPTIONS } from "../utils/instanceUtils";
 import { InstanceIconView } from "./InstanceIconView";
 
@@ -35,8 +35,6 @@ export function InstanceModal({
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
   const [selectedLoader, setSelectedLoader] = useState<"vanilla" | "fabric" | "forge" | "neoforge" | "quilt">("vanilla");
-  const [withSodiumIris, setWithSodiumIris] = useState(false);
-  const [withOptifine, setWithOptifine] = useState(false);
   const [installProgress, setInstallProgress] = useState<{ stage: string; percent: number; message: string } | null>(null);
 
   useEffect(() => {
@@ -46,8 +44,6 @@ export function InstanceModal({
     setIcon(edit?.icon ?? "grass");
     setNotes(edit?.notes ?? "");
     setSelectedLoader("vanilla");
-    setWithSodiumIris(false);
-    setWithOptifine(false);
     setInstallProgress(null);
   }, [open, edit, installedVersions]);
 
@@ -71,8 +67,6 @@ export function InstanceModal({
         icon,
         notes: notes.trim() || undefined,
         loader: selectedLoader,
-        withSodiumIris: selectedLoader === "fabric" ? withSodiumIris : undefined,
-        withOptifine: selectedLoader === "forge" ? withOptifine : undefined,
       });
       
       // Wait a bit to ensure progress is complete
@@ -164,36 +158,6 @@ export function InstanceModal({
                 <option value="neoforge">NeoForge</option>
                 <option value="quilt">Quilt</option>
               </select>
-            </div>
-          )}
-
-          {!edit && selectedLoader === "fabric" && (
-            <div className="form-group">
-              <label className="checkbox-label">
-                <input
-                  type="checkbox"
-                  checked={withSodiumIris}
-                  onChange={(e) => setWithSodiumIris(e.target.checked)}
-                  disabled={saving}
-                />
-                <span>Установить Sodium + Iris</span>
-              </label>
-              <p className="form-hint">Установит моды для улучшения производительности и шейдеров</p>
-            </div>
-          )}
-
-          {!edit && selectedLoader === "forge" && (
-            <div className="form-group">
-              <label className="checkbox-label">
-                <input
-                  type="checkbox"
-                  checked={withOptifine}
-                  onChange={(e) => setWithOptifine(e.target.checked)}
-                  disabled={saving}
-                />
-                <span>Установить OptiFine</span>
-              </label>
-              <p className="form-hint">Установит мод для улучшения графики и шейдеров</p>
             </div>
           )}
 

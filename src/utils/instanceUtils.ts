@@ -1,4 +1,4 @@
-import type { GameInstance, InstanceIcon, InstanceLoader } from "../vite-env.d";
+import type { GameInstance, InstanceIcon, InstanceLoader } from "../types/api";
 
 export const LOADER_LABELS: Record<InstanceLoader, string> = {
   vanilla: "Vanilla",

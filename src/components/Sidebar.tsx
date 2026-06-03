@@ -1,4 +1,4 @@
-import { Home, Users, Package, Settings, Shirt, Flame } from "lucide-react";
+import { Home, Users, Package, Settings, Shirt, Flame, Puzzle } from "lucide-react";
 import { useLauncherStore } from "../store/useLauncherStore";
 import { SkinAvatar } from "./SkinAvatar";
 
@@ -6,6 +6,7 @@ const NAV = [
   { id: "home" as const, icon: Home, label: "Экземпляры" },
   { id: "accounts" as const, icon: Users, label: "Аккаунты" },
   { id: "skins" as const, icon: Shirt, label: "Скины" },
+  { id: "mods" as const, icon: Puzzle, label: "Моды" },
   { id: "versions" as const, icon: Package, label: "Версии" },
   { id: "settings" as const, icon: Settings, label: "Настройки" },
 ];

@@ -5,9 +5,9 @@ import type {
   VersionInfo,
   LaunchProgress,
   GameInstance,
-} from "../vite-env.d";
+} from "../types/api";
 
-type Page = "home" | "accounts" | "skins" | "versions" | "settings";
+type Page = "home" | "accounts" | "skins" | "versions" | "settings" | "mods";
 
 interface LauncherState {
   page: Page;

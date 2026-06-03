@@ -10,7 +10,7 @@ import {
 import { useLauncherStore } from "../store/useLauncherStore";
 import { InstanceIconView } from "../components/InstanceIconView";
 import { InstanceModal } from "../components/InstanceModal";
-import type { GameInstance } from "../vite-env.d";
+import type { GameInstance } from "../types/api";
 import {
   formatLastPlayed,
   formatPlayTime,

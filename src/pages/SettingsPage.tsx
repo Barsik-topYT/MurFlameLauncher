@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { FolderOpen, Coffee } from "lucide-react";
 import { useLauncherStore } from "../store/useLauncherStore";
-import type { JavaInfo } from "../vite-env.d";
+import type { JavaInfo } from "../types/api";
 
 export function SettingsPage() {
   const { settings, updateSettings } = useLauncherStore();
@@ -200,7 +200,7 @@ export function SettingsPage() {
                 type="button"
                 className="btn btn-secondary"
                 onClick={async () => {
-                  const p = await window.murflame.settings.pickJava();
+                  const p = await window.murflame?.settings.pickJava();
                   if (p) save({ javaPath: p });
                 }}
               >
@@ -233,7 +233,7 @@ export function SettingsPage() {
                 type="button"
                 className="btn btn-secondary"
                 onClick={async () => {
-                  const p = await window.murflame.settings.pickGameDir();
+                  const p = await window.murflame?.settings.pickGameDir();
                   if (p) save({ gameDir: p });
                 }}
               >
@@ -276,6 +276,11 @@ export function SettingsPage() {
               <option value="old_alpha">Только Alpha</option>
             </select>
           </div>
+        </div>
+
+        <div style={{ marginTop: 32, textAlign: "center", color: "var(--text-muted)", fontSize: 14 }}>
+          <p>Версия приложения 03.06</p>
+          <p>Создатели: Barsik_topYT, K0maruTrende</p>
         </div>
       </div>
     </>

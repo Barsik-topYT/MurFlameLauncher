@@ -1,4 +1,4 @@
-import type { LauncherSettings } from "../vite-env.d";
+import type { LauncherSettings, VersionInfo } from "../types/api";
 
 export type VersionFilter = LauncherSettings["versionFilter"];
 

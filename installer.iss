@@ -1,14 +1,12 @@
 ; Inno Setup Script для MurFlame Launcher
-; Сохраните как installer.iss в корне проекта
 
 #define MyAppName "MurFlame Launcher"
-#define MyAppVersion "1.0.0"
+#define MyAppVersion "03.06.26"
 #define MyAppPublisher "MurFlame"
 #define MyAppURL "https://github.com/murflame"
-#define MyAppExeName "MurFlame.exe"
+#define MyAppExeName "MurFlame Launcher.exe"
 
 [Setup]
-; Уникальный ID приложения (сгенерируйте новый через Tools -> Generate GUID)
 AppId={{8E5B8E5A-8E5B-8E5B-8E5B-8E5B8E5B8E5B}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
@@ -23,7 +21,7 @@ AllowNoIcons=yes
 LicenseFile=LICENSE.txt
 PrivilegesRequired=lowest
 OutputDir=installer
-OutputBaseFilename=MurFlame_Setup
+OutputBaseFilename=MurFlame_Setup_{#MyAppVersion}
 SetupIconFile=assets\icon.ico
 UninstallDisplayIcon={app}\{#MyAppExeName}
 Compression=lzma2
@@ -34,6 +32,9 @@ ShowLanguageDialog=yes
 Uninstallable=yes
 CreateUninstallRegKey=yes
 DisableProgramGroupPage=yes
+UsePreviousAppDir=yes
+ArchitecturesInstallIn64BitMode=x64
+ArchitecturesAllowed=x64
 
 [Languages]
 Name: "russian"; MessagesFile: "compiler:Languages\Russian.isl"
@@ -43,11 +44,8 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
 [Files]
-; Основной исполняемый файл
 Source: "release\win-unpacked\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
-; Все файлы Electron
 Source: "release\win-unpacked\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
-; Иконка
 Source: "assets\icon.ico"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]

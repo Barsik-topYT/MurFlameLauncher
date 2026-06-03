@@ -13,6 +13,16 @@ import { fileURLToPath } from "url";
 import fs from "fs/promises";
 import { existsSync } from "fs";
 import { spawn, execSync } from "child_process";
+
+// Fix console encoding for Windows
+if (process.platform === "win32") {
+  try {
+    execSync("chcp 65001");
+  } catch (e) {
+    // Ignore if chcp fails
+  }
+}
+
 import Store from "electron-store";
 import { installFabric, installQuiltVersion, installForge, installNeoForged } from "@xmcl/installer";
 import type {
@@ -34,8 +44,10 @@ import {
   detectLoader,
   ensureInstanceDirs,
   listInstalledVersionIds,
+  createInstanceFolder,
+  ensureInstanceFolder,
 } from "./instances.js";
-import { runLaunchGame } from "./launchGame.js";
+import { runLaunchGame, killGameProcess, isGameRunning } from "./launchGame.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -89,7 +101,6 @@ function resolveSettings(): LauncherSettings {
   s.maxMemory = Math.max(1024, Math.min(s.maxMemory ?? DEFAULT_SETTINGS.maxMemory, 16384));
   s.minMemory = Math.max(256, Math.min(s.minMemory ?? DEFAULT_SETTINGS.minMemory, s.maxMemory));
   
-  // Обновляем глобальные настройки
   globalThis.__launcherSettings = {
     minMemory: s.minMemory,
     maxMemory: s.maxMemory
@@ -111,9 +122,7 @@ function resolvePreloadPath(): string {
   return path.join(__dirname, "preload.mjs");
 }
 
-// Функция для создания иконки в трее
 function createTray() {
-  // Путь к иконке
   let iconPath = path.join(__dirname, '../assets/icon.ico');
   
   if (!existsSync(iconPath)) {
@@ -190,7 +199,6 @@ function createTray() {
 function createWindow() {
   const settings = resolveSettings();
   
-  // Путь к иконке для окна
   let windowIconPath = path.join(__dirname, '../assets/icon.ico');
   if (!existsSync(windowIconPath)) {
     windowIconPath = path.join(__dirname, '../public/icon.png');
@@ -812,8 +820,8 @@ function resolveJavaExecutable(javaPath: string): string {
   return javaPath;
 }
 
-async function launchGame(versionId: string, instanceId?: string, loader?: string) {
-  console.log("[MurFlame] launchGame called with:", { versionId, instanceId, loader });
+async function launchGame(versionId: string, instancePath: string, loader?: string) {
+  console.log("[MurFlame] launchGame called with:", { versionId, instancePath, loader });
   
   if (!versionId) throw new Error("Не передана версия для запуска");
   
@@ -827,8 +835,6 @@ async function launchGame(versionId: string, instanceId?: string, loader?: strin
     account = await refreshMicrosoftToken(account);
   }
 
-  const instancePath = instanceId ? await ensureInstanceDirs(settings.gameDir, instanceId) : settings.gameDir;
-  
   await runLaunchGame(
     versionId,
     instancePath,
@@ -839,12 +845,11 @@ async function launchGame(versionId: string, instanceId?: string, loader?: strin
     account.accessToken
   );
 
-  if (instanceId) {
-    const inst = findInstance(instanceId);
-    if (inst) {
-      inst.lastPlayed = Date.now();
-      upsertInstance(inst);
-    }
+  const instances = getInstances();
+  const inst = instances.find(i => i.versionId === versionId);
+  if (inst) {
+    inst.lastPlayed = Date.now();
+    upsertInstance(inst);
   }
   store.set("lastVersion", versionId);
 
@@ -858,7 +863,6 @@ function registerIpc() {
     const current = resolveSettings();
     const next = { ...current, ...partial };
     
-    // Валидация настроек памяти
     if (next.maxMemory) {
       next.maxMemory = Math.max(1024, Math.min(next.maxMemory, 16384));
     }
@@ -868,7 +872,6 @@ function registerIpc() {
     
     store.set("settings", next);
     
-    // Обновляем глобальные настройки для launchGame
     globalThis.__launcherSettings = {
       minMemory: next.minMemory,
       maxMemory: next.maxMemory
@@ -877,7 +880,6 @@ function registerIpc() {
     return next;
   });
 
-  // Добавляем обработчик для получения настроек памяти
   ipcMain.handle("settings:getMemory", () => {
     const settings = resolveSettings();
     return {
@@ -972,7 +974,14 @@ function registerIpc() {
   });
   
   ipcMain.handle("versions:last", () => store.get("lastVersion"));
-  ipcMain.handle("game:launch", (_e, versionId: string) => launchGame(versionId));
+  
+  ipcMain.handle("game:launch", (_e, versionId: string, instancePath: string, loader?: string) => 
+    launchGame(versionId, instancePath, loader)
+  );
+  
+  ipcMain.handle("game:isRunning", () => isGameRunning());
+  ipcMain.handle("game:kill", () => killGameProcess());
+  
   ipcMain.handle("instances:list", () => getInstances());
   ipcMain.handle("instances:selected", () => store.get("selectedInstanceId"));
   
@@ -1075,7 +1084,6 @@ function registerIpc() {
       finalVersionId = versionId || data.versionId;
     }
 
-    // Создаём финальный инстанс
     const instance = createInstanceRecord({
       name: data.name,
       versionId: finalVersionId,
@@ -1084,9 +1092,14 @@ function registerIpc() {
       loader: data.loader || "vanilla",
     });
     
-    await ensureInstanceDirs(settings.gameDir, instance.id, instance.name);
+    // Создаём папку для экземпляра
+    const instanceFolder = await createInstanceFolder(settings.gameDir, instance);
+    instance.instanceFolder = path.basename(instanceFolder);
     
-    const modsDir = path.join(settings.gameDir, "instances", instance.id, "mods");
+    // Сохраняем ID экземпляра в папке
+    await fs.writeFile(path.join(instanceFolder, ".instance_id"), instance.id);
+    
+    const modsDir = path.join(instanceFolder, "mods");
     
     // Установка Sodium + Iris для Fabric
     if (data.withSodiumIris && data.loader === "fabric") {
@@ -1125,33 +1138,50 @@ function registerIpc() {
     
     // Установка OptiFine для Forge
     if (data.withOptifine && data.loader === "forge") {
-      send("launch:progress", { stage: "mods", percent: 70, message: "Установка OptiFine..." } as LaunchProgress);
-      
       const baseVersion = data.versionId.match(/^(\d+\.\d+(?:\.\d+)?)/)?.[1] || data.versionId;
+      const versionParts = baseVersion.split('.');
+      const major = parseInt(versionParts[0]);
+      const minor = parseInt(versionParts[1]);
+      const versionNum = major === 1 ? minor : major;
       
-      const getOptiFineVersion = async (mcVersion: string) => {
-        try {
-          const url = `https://bmclapi2.bangbang93.com/optifine/${mcVersion}`;
-          const response = await fetch(url, { headers: { "User-Agent": "MurFlame-Launcher/1.0" } });
-          if (!response.ok) return null;
-          const versions = await response.json();
-          if (versions?.length) {
-            const stable = versions.find((v: any) => v.type === "HD_U" && !v.patch?.includes("pre"));
-            return stable || versions[0];
+      if (versionNum >= 15) {
+        send("launch:progress", { stage: "mods", percent: 70, message: "Установка OptiFine..." } as LaunchProgress);
+        
+        const getOptiFineVersion = async (mcVersion: string) => {
+          try {
+            const url = `https://bmclapi2.bangbang93.com/optifine/${mcVersion}`;
+            const response = await fetch(url, { headers: { "User-Agent": "MurFlame-Launcher/1.0" } });
+            if (!response.ok) return null;
+            const versions = await response.json();
+            if (versions?.length) {
+              const stable = versions.find((v: any) => v.type === "HD_U" && !v.patch?.includes("pre"));
+              return stable || versions[0];
+            }
+            return null;
+          } catch {
+            return null;
           }
-          return null;
-        } catch {
-          return null;
+        };
+        
+        try {
+          const optifineInfo = await getOptiFineVersion(baseVersion);
+          if (optifineInfo) {
+            const optifineUrl = `https://bmclapi2.bangbang93.com/optifine/${baseVersion}/${optifineInfo.type}/${optifineInfo.patch}`;
+            const optifineFileName = `OptiFine_${baseVersion}_${optifineInfo.type}_${optifineInfo.patch}.jar`;
+            await downloadFile(optifineUrl, path.join(modsDir, optifineFileName));
+            console.log(`[MurFlame] OptiFine downloaded to ${modsDir}`);
+          } else {
+            console.warn(`[MurFlame] OptiFine not found for Minecraft ${baseVersion}`);
+          }
+        } catch (e) {
+          console.warn("[MurFlame] OptiFine download failed:", e);
         }
-      };
-      
-      try {
-        const optifineInfo = await getOptiFineVersion(baseVersion);
-        if (optifineInfo) {
-          const optifineUrl = `https://bmclapi2.bangbang93.com/optifine/${baseVersion}/${optifineInfo.type}/${optifineInfo.patch}`;
-          await downloadFile(optifineUrl, path.join(modsDir, `OptiFine_${baseVersion}.jar`));
-        }
-      } catch (e) { console.warn("OptiFine download failed:", e); }
+        
+        send("launch:progress", { stage: "mods", percent: 85, message: "OptiFine установлен" } as LaunchProgress);
+      } else {
+        console.warn(`[MurFlame] OptiFine не поддерживается для Minecraft ${baseVersion} (требуется версия 1.15.2 или выше)`);
+        send("launch:progress", { stage: "mods", percent: 70, message: `OptiFine не поддерживается для ${baseVersion}` } as LaunchProgress);
+      }
     }
     
     send("launch:progress", { stage: "complete", percent: 100, message: "Установка завершена" } as LaunchProgress);
@@ -1217,21 +1247,25 @@ function registerIpc() {
   });
   
   ipcMain.handle("instances:openFolder", async (_e, id: string) => {
+    const inst = findInstance(id);
+    if (!inst) throw new Error("Экземпляр не найден");
     const settings = resolveSettings();
-    const dir = await ensureInstanceDirs(settings.gameDir, id);
-    await shell.openPath(dir);
-    return dir;
+    const folderPath = await ensureInstanceFolder(settings.gameDir, inst);
+    await shell.openPath(folderPath);
+    return folderPath;
   });
   
-  ipcMain.handle("instances:launch", (_e, id) => {
+  ipcMain.handle("instances:launch", async (_e, id) => {
     const inst = findInstance(id);
     if (!inst) throw new Error("Экземпляр не найден");
     if (!inst.versionId) throw new Error(`У экземпляра ${id} нет версии`);
     store.set("selectedInstanceId", id);
-    return launchGame(inst.versionId, id, inst.loader);
+    
+    const settings = resolveSettings();
+    const instancePath = await ensureInstanceFolder(settings.gameDir, inst);
+    
+    return launchGame(inst.versionId, instancePath, inst.loader);
   });
-  
-  ipcMain.handle("game:isRunning", () => gameProcess !== null && !gameProcess?.killed);
 
   ipcMain.on("window:minimize", () => mainWindow?.minimize());
   ipcMain.on("window:maximize", () => {
@@ -1239,7 +1273,6 @@ function registerIpc() {
     else mainWindow?.maximize();
   });
   
-  // Изменяем обработку закрытия окна
   ipcMain.on("window:close", () => {
     const settings = resolveSettings();
     if (settings.closeToTray && tray) {
@@ -1371,6 +1404,108 @@ function registerIpc() {
     delete acc.skinTextureUrl;
     return saveAccount(acc);
   });
+
+  ipcMain.handle("modrinth:search", async (_e, query: string, version?: string, loader?: string, offset?: number, limit?: number) => {
+    try {
+      const facetsList: string[][] = [["project_type:mod"]];
+      if (version) facetsList.push([`versions:${version}`]);
+      if (loader && loader !== "vanilla") {
+        facetsList.push([`categories:${loader.toLowerCase()}`]);
+      }
+      
+      const facetsParam = encodeURIComponent(JSON.stringify(facetsList));
+      const queryParam = encodeURIComponent(query || "");
+      const limitParam = limit || 20;
+      const offsetParam = offset || 0;
+      
+      const url = `https://api.modrinth.com/v2/search?query=${queryParam}&facets=${facetsParam}&offset=${offsetParam}&limit=${limitParam}`;
+      console.log(`[MurFlame] Modrinth Search: ${url}`);
+      
+      const response = await fetch(url, {
+        headers: { "User-Agent": "MurFlame-Launcher/1.0" }
+      });
+      if (!response.ok) {
+        throw new Error(`Modrinth API search returned ${response.status}`);
+      }
+      
+      const data = await response.json();
+      const hits = data.hits.map((h: any) => ({
+        id: h.project_id,
+        slug: h.slug,
+        title: h.title,
+        description: h.description,
+        icon_url: h.icon_url,
+        downloads: h.downloads,
+        followers: h.follows,
+        author: h.author,
+        categories: h.categories,
+        date_modified: h.date_modified,
+      }));
+      
+      return {
+        hits,
+        total_hits: data.total_hits || 0
+      };
+    } catch (e) {
+      console.error("[MurFlame] Modrinth search error:", e);
+      throw e;
+    }
+  });
+
+  ipcMain.handle("modrinth:installMod", async (_e, projectId: string, instanceId: string) => {
+    try {
+      const instances = getInstances();
+      const inst = instances.find(i => i.id === instanceId);
+      if (!inst) {
+        throw new Error(`Instance not found: ${instanceId}`);
+      }
+      
+      const settings = resolveSettings();
+      const instanceFolder = await ensureInstanceFolder(settings.gameDir, inst);
+      const modsDir = path.join(instanceFolder, "mods");
+      
+      if (!existsSync(modsDir)) {
+        await fs.mkdir(modsDir, { recursive: true });
+      }
+      
+      const mcVersion = inst.mcVersion;
+      const loader = inst.loader === "vanilla" ? "fabric" : inst.loader;
+      
+      const url = `https://api.modrinth.com/v2/project/${projectId}/version`;
+      console.log(`[MurFlame] Querying Modrinth version for ${projectId} (mc: ${mcVersion}, loader: ${loader})`);
+      const response = await fetch(`${url}?game_versions=["${mcVersion}"]&loaders=["${loader.toLowerCase()}"]`, {
+        headers: { "User-Agent": "MurFlame-Launcher/1.0" }
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Modrinth API version lookup failed for project ${projectId}: ${response.status}`);
+      }
+      
+      const versions = await response.json();
+      if (!versions?.length) {
+        throw new Error(`No compatible version found for MC ${mcVersion} and loader ${loader}`);
+      }
+      
+      const versionData = versions[0];
+      const file = versionData.files.find((f: any) => f.primary) || versionData.files[0];
+      if (!file) {
+        throw new Error(`No files found in compatible version ${versionData.name}`);
+      }
+      
+      const downloadUrl = file.url;
+      const fileName = file.filename;
+      const destination = path.join(modsDir, fileName);
+      
+      console.log(`[MurFlame] Downloading mod from ${downloadUrl} to ${destination}`);
+      await downloadFile(downloadUrl, destination);
+      console.log(`[MurFlame] Mod installed successfully: ${fileName}`);
+      
+      return true;
+    } catch (e) {
+      console.error("[MurFlame] Mod install error:", e);
+      throw e;
+    }
+  });
 }
 
 app.whenReady().then(() => {
@@ -1380,13 +1515,11 @@ app.whenReady().then(() => {
   }
   registerIpc();
   createWindow();
-  createTray(); // Создаём иконку в трее
+  createTray();
 });
 
-// Исправленная обработка закрытия всех окон (без параметра event)
 app.on('window-all-closed', () => {
   if (tray) {
-    // Если есть трей, не закрываем приложение, а просто прячем окно
     if (mainWindow) {
       mainWindow.hide();
     }

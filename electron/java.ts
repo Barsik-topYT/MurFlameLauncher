@@ -1,8 +1,9 @@
-import { existsSync, mkdirSync, readdirSync, unlinkSync, rmSync } from "fs";
+import { existsSync, mkdirSync, readdirSync, unlinkSync, rmSync, statSync } from "fs";
 import { join } from "path";
 import { downloadFile } from "./utils.js";
 import AdmZip from "adm-zip";
-import { moveSync } from "fs-extra";
+import fsExtra from "fs-extra";
+const { copySync, removeSync } = fsExtra;
 
 const JAVA_DOWNLOADS = {
   win32: {
@@ -112,7 +113,7 @@ export async function ensureJavaRuntime(
       const subDirs = readdirSync(dir);
       for (const subDir of subDirs) {
         const fullPath = join(dir, subDir);
-        if (existsSync(fullPath) && !fullPath.includes('.')) {
+        if (existsSync(fullPath) && statSync(fullPath).isDirectory()) {
           const result = findJavaDir(fullPath, depth + 1);
           if (result) return result;
         }
@@ -141,9 +142,9 @@ export async function ensureJavaRuntime(
     try {
       const sourcePath = join(actualJavaDir, file);
       const targetPath = join(targetDir, file);
-      moveSync(sourcePath, targetPath, { overwrite: true });
+      copySync(sourcePath, targetPath, { overwrite: true });
     } catch (e) {
-      console.warn(`Failed to move ${file}:`, e);
+      console.warn(`Failed to copy ${file}:`, e);
     }
   }
 

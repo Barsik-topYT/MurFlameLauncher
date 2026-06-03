@@ -47,7 +47,7 @@ export function SkinsPage() {
     // Синхронизация скина и плаща
     const syncData = async () => {
       try {
-        await window.murflame.skin.sync(activeAccount.id);
+        await window.murflame?.skin.sync(activeAccount.id);
         await loadAccounts();
         
         // Загрузка информации о плаще
@@ -56,7 +56,7 @@ export function SkinsPage() {
           setCapePreview(`https://crafatar.com/capes/${uuid}`);
           
           // Получение списка плащей аккаунта
-          const capes = await window.murflame.skin.getCapes(activeAccount.id);
+          const capes = await window.murflame?.skin.getCapes?.(activeAccount.id);
           setOwnedCapes(capes || []);
         }
       } catch (e) {
@@ -137,7 +137,7 @@ export function SkinsPage() {
     setError(null);
     setSuccess(null);
     try {
-      await window.murflame.skin.applyCape(activeAccount.id, previewCapeFile);
+      await window.murflame.skin.applyCape?.(activeAccount.id, previewCapeFile);
       await loadAccounts();
       setPreviewCapeFile(null);
       setSuccess("Плащ загружен на аккаунт Mojang!");
@@ -154,7 +154,7 @@ export function SkinsPage() {
     setError(null);
     setSuccess(null);
     try {
-      await window.murflame.skin.setOfficialCape(activeAccount.id, capeId);
+      await window.murflame.skin.setOfficialCape?.(activeAccount.id, capeId);
       await loadAccounts();
       setSelectedCape(capeId);
       setSuccess(`Плащ "${capeId}" установлен!`);
@@ -195,7 +195,7 @@ export function SkinsPage() {
     setError(null);
     setSuccess(null);
     try {
-      await window.murflame.skin.resetCape(activeAccount.id);
+      await window.murflame.skin.resetCape?.(activeAccount.id);
       await loadAccounts();
       setPreviewCapeFile(null);
       setSelectedCape(null);

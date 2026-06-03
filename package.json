@@ -1,17 +1,21 @@
 {
   "name": "murflame-launcher",
-  "version": "1.0.0",
+  "version": "03.06.26",
   "description": "MurFlame — Minecraft Launcher с лицензией и офлайн-режимом",
   "main": "dist-electron/main.js",
   "type": "module",
+  "author": "MurFlame Team",
+  "license": "MIT",
   "scripts": {
     "dev": "vite",
     "build": "npm run build:electron && npm run build:vite",
     "build:electron": "tsc -p electron/tsconfig.json",
     "build:vite": "vite build",
-    "build:installer": "node build-installer.js",
-    "dist": "npm run build && npm run build:installer",
-    "dist:electron": "npm run build && electron-builder",
+    "build:installer": "node build-installer.cjs",
+    "dist": "npm run build && npm run dist:portable && npm run dist:nsis && npm run build:installer",
+    "dist:portable": "electron-builder --win portable --x64",
+    "dist:nsis": "electron-builder --win nsis --x64",
+    "dist:all": "npm run build && npm run dist:portable && npm run dist:nsis",
     "preview": "vite preview",
     "start": "electron dist-electron/main.js",
     "postinstall": "electron-builder install-app-deps"
@@ -19,50 +23,41 @@
   "build": {
     "appId": "com.murflame.launcher",
     "productName": "MurFlame Launcher",
-    "copyright": "Copyright © 2024 MurFlame",
+    "copyright": "Copyright © 2025 MurFlame Team",
     "directories": {
       "output": "release",
-      "buildResources": "assets"
+      "buildResources": "assets",
+      "app": "."
     },
     "win": {
       "target": [
         {
           "target": "nsis",
-          "arch": [
-            "x64"
-          ]
+          "arch": ["x64"]
+        },
+        {
+          "target": "portable",
+          "arch": ["x64"]
         }
       ],
       "icon": "assets/icon.ico",
-      "artifactName": "MurFlame_Setup_${version}.exe"
-    },
-    "nsis": {
-      "oneClick": false,
-      "allowToChangeInstallationDirectory": true,
-      "createDesktopShortcut": true,
-      "createStartMenuShortcut": true,
-      "shortcutName": "MurFlame Launcher",
-      "installerIcon": "assets/icon.ico",
-      "uninstallerIcon": "assets/icon.ico",
-      "license": "LICENSE.txt",
-      "installerHeaderIcon": "assets/icon.ico",
-      "perMachine": false,
-      "deleteAppDataOnUninstall": false
+      "artifactName": "${productName}_${version}.${ext}",
+      "publisherName": "MurFlame"
     },
     "files": [
       "dist-electron/**/*",
       "dist/**/*",
       "!dist-electron/*.ts",
       "!dist-electron/*.map",
-      "!dist-electron/*.tsbuildinfo"
+      "!dist-electron/*.tsbuildinfo",
+      "!node_modules/.cache",
+      "assets/**/*"
     ],
     "extraResources": [
       {
         "from": "assets",
         "to": "assets",
-        "filter": [
-          "**/*"
-        ]
+        "filter": ["**/*"]
       }
     ],
     "asar": true,
@@ -78,6 +73,8 @@
     "adm-zip": "^0.5.17",
     "electron-store": "^8.2.0",
     "fs-extra": "^11.3.5",
+    "iconv-lite": "^0.7.2",
+    "jszip": "^3.10.1",
     "lucide-react": "^0.468.0",
     "pngjs": "^7.0.0",
     "react": "^18.3.1",
@@ -88,6 +85,8 @@
   "devDependencies": {
     "@types/adm-zip": "^0.5.8",
     "@types/fs-extra": "^11.0.4",
+    "@types/iconv-lite": "^0.0.1",
+    "@types/jszip": "^3.4.0",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@types/tar": "^6.1.13",

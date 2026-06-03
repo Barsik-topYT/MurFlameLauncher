@@ -1,4 +1,4 @@
-import type { InstanceIcon } from "../vite-env.d";
+import type { InstanceIcon } from "../types/api";
 import { iconEmoji } from "../utils/instanceUtils";
 
 interface Props {

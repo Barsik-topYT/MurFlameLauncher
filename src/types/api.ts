@@ -13,7 +13,7 @@ export interface LauncherSettings {
   language: string;
   closeOnLaunch: boolean;
   closeToTray: boolean;
-  versionFilter: "all" | "release" | "snapshot";
+  versionFilter: "all" | "release" | "snapshot" | "old_beta" | "old_alpha";
   customJvmArgs: string;
   windowWidth: number;
   windowHeight: number;
@@ -82,7 +82,7 @@ export interface GameInstance {
   name: string;
   versionId: string;
   mcVersion: string;
-  loader: "vanilla" | "fabric" | "forge" | "neoforge" | "quilt" | "optifine";
+  loader: InstanceLoader;
   icon: InstanceIcon;
   notes?: string;
   createdAt: number;
@@ -101,7 +101,9 @@ export type InstanceIcon =
   | "creeper"
   | "ender"
   | "nether"
-  | "custom";
+  | "custom"
+  | "tnt"
+  | "star";
 
 // Типы для установки модлоадеров
 export interface ModLoaderInstallResult {
@@ -110,7 +112,7 @@ export interface ModLoaderInstallResult {
   instance?: GameInstance;
 }
 
-export type InstanceLoader = "vanilla" | "fabric" | "forge" | "neoforge" | "quilt";
+export type InstanceLoader = "vanilla" | "fabric" | "forge" | "neoforge" | "quilt" | "optifine";
 
 // Типы для модов
 export interface ModrinthProject {
@@ -121,6 +123,9 @@ export interface ModrinthProject {
   icon_url: string;
   downloads: number;
   followers: number;
+  author?: string;
+  categories?: string[];
+  date_modified?: string;
 }
 
 export interface ModrinthVersion {
@@ -188,6 +193,16 @@ export interface MurFlameAPI {
     remove: (id: string) => Promise<GameInstance[]>;
     openFolder: (id: string) => Promise<string>;
     launch: (id: string) => Promise<void>;
+  };
+  modrinth: {
+    search: (
+      query: string,
+      version?: string,
+      loader?: string,
+      offset?: number,
+      limit?: number
+    ) => Promise<{ hits: ModrinthProject[]; total_hits: number }>;
+    installMod: (projectId: string, instanceId: string) => Promise<boolean>;
   };
   game: {
     launch: (versionId: string) => Promise<void>;

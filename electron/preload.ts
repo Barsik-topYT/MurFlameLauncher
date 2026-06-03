@@ -5,6 +5,9 @@ import type {
   VersionInfo,
   LaunchProgress,
   JavaInfo,
+  GameInstance,
+  InstanceIcon,
+  ModLoaderInstallResult,
 } from "./types.js";
 
 const api = {
@@ -16,6 +19,8 @@ const api = {
       ipcRenderer.invoke("settings:pickGameDir"),
     pickJava: (): Promise<string | null> =>
       ipcRenderer.invoke("settings:pickJava"),
+    getMemory: (): Promise<{ minMemory: number; maxMemory: number }> =>
+      ipcRenderer.invoke("settings:getMemory"),
   },
   java: {
     list: (): Promise<JavaInfo[]> => ipcRenderer.invoke("java:list"),
@@ -41,9 +46,15 @@ const api = {
     last: (): Promise<string> => ipcRenderer.invoke("versions:last"),
   },
   game: {
-    launch: (versionId: string): Promise<void> =>
-      ipcRenderer.invoke("game:launch", versionId),
+    launch: (versionId: string, instancePath?: string, loader?: string): Promise<void> =>
+      ipcRenderer.invoke("game:launch", versionId, instancePath, loader),
     isRunning: (): Promise<boolean> => ipcRenderer.invoke("game:isRunning"),
+    kill: (): Promise<boolean> => ipcRenderer.invoke("game:kill"),
+    onStatusChange: (cb: (isRunning: boolean) => void) => {
+      const handler = (_: unknown, isRunning: boolean) => cb(isRunning);
+      ipcRenderer.on("game:status", handler);
+      return () => ipcRenderer.removeListener("game:status", handler);
+    },
   },
   window: {
     minimize: () => ipcRenderer.send("window:minimize"),
@@ -79,7 +90,7 @@ const api = {
     ) => ipcRenderer.invoke("modloader:install", loader, mcVersion, options ?? {}),
   },
   instances: {
-    list: (): Promise<import("./types.js").GameInstance[]> =>
+    list: (): Promise<GameInstance[]> =>
       ipcRenderer.invoke("instances:list"),
     selected: (): Promise<string | null> => ipcRenderer.invoke("instances:selected"),
     setSelected: (id: string | null): Promise<string | null> =>
@@ -89,7 +100,7 @@ const api = {
     create: (data: {
       name: string;
       versionId: string;
-      icon?: import("./types.js").GameInstance["icon"];
+      icon?: InstanceIcon;
       notes?: string;
       loader?: "vanilla" | "fabric" | "forge" | "neoforge" | "quilt";
       withSodiumIris?: boolean;
@@ -97,11 +108,22 @@ const api = {
     }) => ipcRenderer.invoke("instances:create", data),
     update: (
       id: string,
-      patch: Partial<Omit<import("./types.js").GameInstance, "id">>
+      patch: Partial<Omit<GameInstance, "id">>
     ) => ipcRenderer.invoke("instances:update", id, patch),
+    updateLoader: (
+      id: string,
+      newLoader: "vanilla" | "fabric" | "forge" | "neoforge" | "quilt",
+      loaderVersion?: string
+    ) => ipcRenderer.invoke("instances:updateLoader", id, newLoader, loaderVersion),
     remove: (id: string) => ipcRenderer.invoke("instances:remove", id),
     openFolder: (id: string) => ipcRenderer.invoke("instances:openFolder", id),
     launch: (id: string) => ipcRenderer.invoke("instances:launch", id),
+  },
+  modrinth: {
+    search: (query: string, version?: string, loader?: string, offset?: number, limit?: number) =>
+      ipcRenderer.invoke("modrinth:search", query, version, loader, offset, limit),
+    installMod: (projectId: string, instanceId: string) =>
+      ipcRenderer.invoke("modrinth:installMod", projectId, instanceId),
   },
   onLaunchProgress: (cb: (p: LaunchProgress) => void) => {
     const handler = (_: unknown, data: LaunchProgress) => cb(data);

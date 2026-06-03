@@ -88,6 +88,7 @@ export interface GameInstance {
   createdAt: number;
   lastPlayed?: number;
   playTimeMs: number;
+  instanceFolder?: string;
 }
 
 export type InstanceIcon =
@@ -121,6 +122,9 @@ export interface ModrinthProject {
   icon_url: string;
   downloads: number;
   followers: number;
+  author?: string;
+  categories?: string[];
+  date_modified?: string;
 }
 
 export interface ModrinthVersion {
@@ -186,9 +190,21 @@ export interface MurFlameAPI {
     openFolder: (id: string) => Promise<string>;
     launch: (id: string) => Promise<void>;
   };
+  modrinth: {
+    search: (
+      query: string,
+      version?: string,
+      loader?: string,
+      offset?: number,
+      limit?: number
+    ) => Promise<{ hits: ModrinthProject[]; total_hits: number }>;
+    installMod: (projectId: string, instanceId: string) => Promise<boolean>;
+  };
   game: {
-    launch: (versionId: string) => Promise<void>;
+    launch: (versionId: string, instancePath?: string, loader?: string) => Promise<void>;
     isRunning: () => Promise<boolean>;
+    kill: () => Promise<boolean>;
+    onStatusChange: (cb: (isRunning: boolean) => void) => () => void;
   };
   window: {
     minimize: () => void;

@@ -39,25 +39,97 @@ export function detectMcVersion(versionId: string): string {
   return match?.[1] ?? versionId;
 }
 
-export function instanceDir(gameDir: string, instanceId: string): string {
-  return path.join(gameDir, "instances", instanceId);
+export function instanceDir(gameDir: string, instanceNameOrId: string): string {
+  return path.join(gameDir, "instances", instanceNameOrId);
 }
 
-export async function ensureInstanceDirs(gameDir: string, instanceId: string, instanceName?: string) {
-  const folderName = instanceName ? sanitizeFolderName(instanceName) : instanceId;
-  const instancesDir = path.join(gameDir, "instances");
+export async function getInstanceFolder(gameDir: string, instance: GameInstance): Promise<string> {
+  const folderName = sanitizeFolderName(instance.name);
+  return path.join(gameDir, "instances", folderName);
+}
 
+export async function createInstanceFolder(gameDir: string, instance: GameInstance): Promise<string> {
+  const instancesDir = path.join(gameDir, "instances");
+  
   let existingNames: string[] = [];
   if (existsSync(instancesDir)) {
     existingNames = readdirSync(instancesDir);
   }
+  
+  const folderName = generateUniqueFolderName(instance.name, existingNames);
+  const instanceFolder = path.join(instancesDir, folderName);
+  
+  for (const sub of ["mods", "config", "saves", "resourcepacks", "shaderpacks", "logs"]) {
+    await fs.mkdir(path.join(instanceFolder, sub), { recursive: true });
+  }
+  
+  instance.instanceFolder = folderName;
+  
+  return instanceFolder;
+}
 
-  const finalFolderName = instanceName ? generateUniqueFolderName(instanceName, existingNames) : instanceId;
+export async function ensureInstanceFolder(gameDir: string, instance: GameInstance): Promise<string> {
+  if (instance.instanceFolder) {
+    const folderPath = path.join(gameDir, "instances", instance.instanceFolder);
+    if (existsSync(folderPath)) {
+      return folderPath;
+    }
+  }
+  
+  const instancesDir = path.join(gameDir, "instances");
+  if (existsSync(instancesDir)) {
+    const entries = readdirSync(instancesDir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.isDirectory()) {
+        const instanceIdFile = path.join(instancesDir, entry.name, ".instance_id");
+        if (existsSync(instanceIdFile)) {
+          const savedId = await fs.readFile(instanceIdFile, "utf-8");
+          if (savedId.trim() === instance.id) {
+            instance.instanceFolder = entry.name;
+            return path.join(instancesDir, entry.name);
+          }
+        }
+        if (entry.name === sanitizeFolderName(instance.name)) {
+          instance.instanceFolder = entry.name;
+          return path.join(instancesDir, entry.name);
+        }
+      }
+    }
+  }
+  
+  return createInstanceFolder(gameDir, instance);
+}
+
+export async function ensureInstanceDirs(gameDir: string, instanceId: string, instanceName?: string) {
+  const instancesDir = path.join(gameDir, "instances");
+  
+  if (existsSync(instancesDir)) {
+    const entries = readdirSync(instancesDir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.isDirectory()) {
+        const instanceIdFile = path.join(instancesDir, entry.name, ".instance_id");
+        if (existsSync(instanceIdFile)) {
+          const savedId = await fs.readFile(instanceIdFile, "utf-8");
+          if (savedId.trim() === instanceId) {
+            return path.join(instancesDir, entry.name);
+          }
+        }
+      }
+    }
+  }
+  
+  const folderName = instanceName ? sanitizeFolderName(instanceName) : instanceId;
+  const finalFolderName = generateUniqueFolderName(folderName, 
+    existsSync(instancesDir) ? readdirSync(instancesDir) : []
+  );
   const base = path.join(instancesDir, finalFolderName);
-
-  for (const sub of ["mods", "config", "saves", "resourcepacks", "shaderpacks"]) {
+  
+  for (const sub of ["mods", "config", "saves", "resourcepacks", "shaderpacks", "logs"]) {
     await fs.mkdir(path.join(base, sub), { recursive: true });
   }
+  
+  await fs.writeFile(path.join(base, ".instance_id"), instanceId);
+  
   return base;
 }
 
@@ -105,6 +177,7 @@ export function createInstanceRecord(
     lastPlayed: partial.lastPlayed,
     playTimeMs: partial.playTimeMs ?? 0,
     notes: partial.notes ?? "",
+    instanceFolder: partial.instanceFolder,
   };
 }
 

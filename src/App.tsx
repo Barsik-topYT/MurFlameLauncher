@@ -6,6 +6,7 @@ import { AccountsPage } from "./pages/AccountsPage";
 import { VersionsPage } from "./pages/VersionsPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { SkinsPage } from "./pages/SkinsPage";
+import { ModsPage } from "./pages/ModsPage";
 import { LauncherSplashScreen } from "./components/LauncherSplashScreen";
 import { useLauncherStore } from "./store/useLauncherStore";
 
@@ -90,6 +91,9 @@ export default function App() {
         break;
       case "settings":
         component = <SettingsPage />;
+        break;
+      case "mods":
+        component = <ModsPage />;
         break;
       default:
         component = <HomePage />;
