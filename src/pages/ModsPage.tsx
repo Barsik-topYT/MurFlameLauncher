@@ -9,11 +9,11 @@ import {
   ThumbsUp,
   ChevronLeft,
   ChevronRight,
-  Info,
   ExternalLink,
+  Trash2
 } from "lucide-react";
 import { useLauncherStore } from "../store/useLauncherStore";
-import type { ModrinthProject } from "../types/api";
+import type { ModrinthProject, CurseForgeProject } from "../types/api";
 
 const COMMON_VERSIONS = [
   "1.21",
@@ -37,25 +37,23 @@ const LOADERS = ["fabric", "forge", "neoforge", "quilt"];
 export function ModsPage() {
   const { instances, selectedInstanceId, setSelectedInstance } = useLauncherStore();
 
-  // Active instance memo
   const activeInstance = useMemo(() => {
     return instances.find((i) => i.id === selectedInstanceId) || instances[0] || null;
   }, [instances, selectedInstanceId]);
 
-  // Filters state
+  const [platform, setPlatform] = useState<"modrinth" | "curseforge">("modrinth");
   const [query, setQuery] = useState("");
   const [versionFilter, setVersionFilter] = useState("");
   const [loaderFilter, setLoaderFilter] = useState("");
-
-  // Mod lists and paginations
-  const [mods, setMods] = useState<ModrinthProject[]>([]);
+  const [modrinthMods, setModrinthMods] = useState<ModrinthProject[]>([]);
+  const [curseforgeMods, setCurseforgeMods] = useState<CurseForgeProject[]>([]);
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [offset, setOffset] = useState(0);
   const [totalHits, setTotalHits] = useState(0);
   const limit = 20;
-
-  // Track installs: [instanceId][projectId] = { status, error }
+  const [installedModsFiles, setInstalledModsFiles] = useState<string[]>([]);
+  const [installedModsMap, setInstalledModsMap] = useState<Record<string, string>>({});
   const [installState, setInstallState] = useState<
     Record<
       string,
@@ -63,12 +61,10 @@ export function ModsPage() {
     >
   >({});
 
-  // Dynamic Minecraft versions list combining COMMON_VERSIONS and instances' versions
   const versionsList = useMemo(() => {
     const fromInstances = instances.map((i) => i.mcVersion).filter(Boolean);
     const combined = new Set([...fromInstances, ...COMMON_VERSIONS]);
     return Array.from(combined).sort((a, b) => {
-      // Simple semver comparison helper (descending order)
       const parse = (v: string) => v.split(".").map((n) => parseInt(n, 10) || 0);
       const ap = parse(a);
       const bp = parse(b);
@@ -81,32 +77,53 @@ export function ModsPage() {
     });
   }, [instances]);
 
-  // Synchronize filters with the active instance on load/change
-  useEffect(() => {
-    if (activeInstance) {
-      setVersionFilter(activeInstance.mcVersion);
-      // Map vanilla loader to fabric or keep it empty for generic mods
-      const loader = activeInstance.loader === "vanilla" ? "" : activeInstance.loader;
-      setLoaderFilter(loader);
+  const loadInstalledMods = useCallback(async () => {
+    if (!activeInstance || !window.murflame) return;
+    try {
+      const data = await window.murflame.mods.listInstalled(activeInstance.id);
+      setInstalledModsFiles(data.files);
+      setInstalledModsMap(data.map);
+    } catch (e) {
+      console.error("Failed to load installed mods:", e);
     }
   }, [activeInstance]);
 
-  // Perform search
+  useEffect(() => {
+    if (activeInstance) {
+      setVersionFilter(activeInstance.mcVersion);
+      const loader = activeInstance.loader === "vanilla" ? "" : activeInstance.loader;
+      setLoaderFilter(loader);
+      loadInstalledMods();
+    }
+  }, [activeInstance, loadInstalledMods]);
+
   const performSearch = useCallback(
     async (searchQuery: string, ver: string, load: string, pageOffset = 0) => {
       if (!window.murflame) return;
       setSearching(true);
       setSearchError(null);
       try {
-        const res = await window.murflame.modrinth.search(
-          searchQuery,
-          ver || undefined,
-          load || undefined,
-          pageOffset,
-          limit
-        );
-        setMods(res.hits);
-        setTotalHits(res.total_hits);
+        if (platform === "modrinth") {
+          const res = await window.murflame.modrinth.search(
+            searchQuery,
+            ver || undefined,
+            load || undefined,
+            pageOffset,
+            limit
+          );
+          setModrinthMods(res.hits);
+          setTotalHits(res.total_hits);
+        } else {
+          const res = await window.murflame.curseforge.search(
+            searchQuery,
+            ver || undefined,
+            load || undefined,
+            pageOffset,
+            limit
+          );
+          setCurseforgeMods(res.hits);
+          setTotalHits(res.total_hits);
+        }
         setOffset(pageOffset);
       } catch (e) {
         setSearchError((e as Error).message || "Не удалось загрузить моды");
@@ -114,17 +131,15 @@ export function ModsPage() {
         setSearching(false);
       }
     },
-    [limit]
+    [limit, platform]
   );
 
-  // Search trigger when inputs change (debounced for text query)
   useEffect(() => {
     const delayDebounce = setTimeout(() => {
       performSearch(query, versionFilter, loaderFilter, 0);
     }, 400);
-
     return () => clearTimeout(delayDebounce);
-  }, [query, versionFilter, loaderFilter, performSearch]);
+  }, [query, versionFilter, loaderFilter, platform, performSearch]);
 
   const handlePageChange = (direction: "prev" | "next") => {
     let newOffset = offset;
@@ -140,11 +155,9 @@ export function ModsPage() {
     }
   };
 
-  const handleInstall = async (projectId: string) => {
+  const handleInstall = async (projectId: string, fileId?: string) => {
     if (!activeInstance) return;
     const instId = activeInstance.id;
-
-    // Update state to installing
     setInstallState((prev) => ({
       ...prev,
       [instId]: {
@@ -152,9 +165,14 @@ export function ModsPage() {
         [projectId]: { status: "installing" },
       },
     }));
-
     try {
-      const success = await window.murflame!.modrinth.installMod(projectId, instId);
+      let success: boolean;
+      if (platform === "modrinth") {
+        success = await window.murflame!.modrinth.installMod(projectId, instId);
+      } else {
+        if (!fileId) throw new Error("No file ID provided for CurseForge mod");
+        success = await window.murflame!.curseforge.installMod(projectId, fileId, instId);
+      }
       if (success) {
         setInstallState((prev) => ({
           ...prev,
@@ -163,6 +181,7 @@ export function ModsPage() {
             [projectId]: { status: "installed" },
           },
         }));
+        await loadInstalledMods();
       } else {
         throw new Error("Не удалось скачать файл мода");
       }
@@ -178,21 +197,33 @@ export function ModsPage() {
     }
   };
 
+  const handleRemoveMod = async (fileName: string, projectId: string) => {
+    if (!activeInstance) return;
+    try {
+      const projectKeyFull = `${platform}:${projectId}`;
+      await window.murflame!.mods.removeMod(activeInstance.id, fileName, projectKeyFull);
+      await loadInstalledMods();
+      setInstallState((prev) => {
+        const newState = { ...prev };
+        if (newState[activeInstance.id]) {
+          delete newState[activeInstance.id][projectId];
+        }
+        return newState;
+      });
+    } catch (e) {
+      console.error("Failed to remove mod:", e);
+    }
+  };
+
   const currentPage = Math.floor(offset / limit) + 1;
   const totalPages = Math.ceil(totalHits / limit) || 1;
 
-  // Format big numbers like downloads (e.g. 178.93M or 23.4K)
   const formatCount = (num: number) => {
-    if (num >= 1000000) {
-      return `${(num / 1000000).toFixed(2)}M`;
-    }
-    if (num >= 1000) {
-      return `${(num / 1000).toFixed(1)}K`;
-    }
+    if (num >= 1000000) return `${(num / 1000000).toFixed(2)}M`;
+    if (num >= 1000) return `${(num / 1000).toFixed(1)}K`;
     return num.toString();
   };
 
-  // Format date modified to a readable format
   const formatDate = (dateStr?: string) => {
     if (!dateStr) return "";
     try {
@@ -203,17 +234,27 @@ export function ModsPage() {
     }
   };
 
+  const getInstalledFileName = (mod: ModrinthProject | CurseForgeProject) => {
+    const key = `${platform}:${mod.id}`;
+    if (installedModsMap[key]) return installedModsMap[key];
+    const modTitleLower = mod.title.toLowerCase();
+    return installedModsFiles.find(file => {
+      const fileLower = file.toLowerCase().replace('.jar', '').replace('.litemod', '');
+      return modTitleLower.includes(fileLower) || fileLower.includes(modTitleLower);
+    });
+  };
+
+  const currentMods = platform === "modrinth" ? modrinthMods : curseforgeMods;
+
   return (
     <div className="mods-page">
       <div className="mods-header">
         <div>
           <h2>Модификации</h2>
           <p className="mods-subtitle">
-            Ищите и скачивайте моды напрямую из Modrinth в один клик
+            Ищите и скачивайте моды напрямую из {platform === "modrinth" ? "Modrinth" : "CurseForge"} в один клик
           </p>
         </div>
-
-        {/* Active Instance Selection */}
         <div className="mods-instance-picker">
           <span className="picker-label">Экземпляр:</span>
           {instances.length === 0 ? (
@@ -233,20 +274,30 @@ export function ModsPage() {
           )}
         </div>
       </div>
-
-      {/* Warning for Vanilla instance */}
       {activeInstance && activeInstance.loader === "vanilla" && (
         <div className="mods-warning">
-          <Info size={16} className="warning-icon" />
+          <AlertTriangle size={16} className="warning-icon" />
           <span>
             Выбран чистый экземпляр <strong>Vanilla</strong>. Чтобы моды запускались, рекомендуется
             перейти во вкладку «Экземпляры», нажать «Изменить» и установить загрузчик Fabric или Forge.
           </span>
         </div>
       )}
-
-      {/* Filters Toolbar */}
       <div className="mods-toolbar border-glow">
+        <div className="flex gap-2">
+          <button
+            className={`btn ${platform === "modrinth" ? "btn-primary" : "btn-secondary"}`}
+            onClick={() => setPlatform("modrinth")}
+          >
+            Modrinth
+          </button>
+          <button
+            className={`btn ${platform === "curseforge" ? "btn-primary" : "btn-secondary"}`}
+            onClick={() => setPlatform("curseforge")}
+          >
+            CurseForge
+          </button>
+        </div>
         <div className="search-box">
           <Search size={18} className="search-icon" />
           <input
@@ -257,12 +308,9 @@ export function ModsPage() {
             className="search-input"
           />
           {query && (
-            <button type="button" className="clear-btn" onClick={() => setQuery("")}>
-              ✕
-            </button>
+            <button type="button" className="clear-btn" onClick={() => setQuery("")}>✕</button>
           )}
         </div>
-
         <div className="filters-group">
           <select
             value={versionFilter}
@@ -271,12 +319,9 @@ export function ModsPage() {
           >
             <option value="">Любая версия MC</option>
             {versionsList.map((ver) => (
-              <option key={ver} value={ver}>
-                Minecraft {ver}
-              </option>
+              <option key={ver} value={ver}>Minecraft {ver}</option>
             ))}
           </select>
-
           <select
             value={loaderFilter}
             onChange={(e) => setLoaderFilter(e.target.value)}
@@ -284,17 +329,13 @@ export function ModsPage() {
           >
             <option value="">Любой загрузчик</option>
             {LOADERS.map((load) => (
-              <option key={load} value={load}>
-                {load.charAt(0).toUpperCase() + load.slice(1)}
-              </option>
+              <option key={load} value={load}>{load.charAt(0).toUpperCase() + load.slice(1)}</option>
             ))}
           </select>
         </div>
       </div>
-
-      {/* Main Mods Content */}
       <div className="mods-content">
-        {searching && mods.length === 0 ? (
+        {searching && currentMods.length === 0 ? (
           <div className="mods-loading">
             <Loader2 size={36} className="spin" />
             <p>Загрузка списка модов...</p>
@@ -311,18 +352,19 @@ export function ModsPage() {
               Повторить попытку
             </button>
           </div>
-        ) : mods.length === 0 ? (
+        ) : currentMods.length === 0 ? (
           <div className="mods-empty">
-            <Info size={40} />
+            <AlertTriangle size={40} />
             <p>По вашему запросу ничего не найдено</p>
           </div>
         ) : (
           <div className="mods-list-wrapper">
             <div className="mods-list">
-              {mods.map((mod) => {
+              {currentMods.map((mod) => {
                 const instId = activeInstance?.id || "";
                 const state = installState[instId]?.[mod.id] || { status: "idle" };
-
+                const isCurseForge = platform === "curseforge";
+                const installedFileName = getInstalledFileName(mod);
                 return (
                   <div key={mod.id} className="mod-card border-glow-hover">
                     {mod.icon_url ? (
@@ -330,29 +372,23 @@ export function ModsPage() {
                     ) : (
                       <div className="mod-icon-placeholder">🧩</div>
                     )}
-
                     <div className="mod-info">
                       <div className="mod-title-row">
                         <span className="mod-title">{mod.title}</span>
                         {mod.author && <span className="mod-author">от {mod.author}</span>}
                       </div>
-
                       <p className="mod-description">{mod.description}</p>
-
                       <div className="mod-meta-row">
                         <div className="mod-categories">
-                          {mod.categories?.slice(0, 3).map((cat) => (
-                            <span key={cat} className="mod-category-badge">
-                              {cat}
-                            </span>
+                          {mod.categories?.slice(0, 3).map((cat, idx) => (
+                            <span key={`${cat}-${idx}`} className="mod-category-badge">{cat}</span>
                           ))}
                         </div>
-
                         <div className="mod-stats">
-                          <span title="Скачивания">
+                          <span title="Скачиваний">
                             <Download size={12} /> {formatCount(mod.downloads)}
                           </span>
-                          <span title="Подписчики">
+                          <span title="Подписчиков">
                             <ThumbsUp size={12} /> {formatCount(mod.followers)}
                           </span>
                           {mod.date_modified && (
@@ -363,35 +399,50 @@ export function ModsPage() {
                         </div>
                       </div>
                     </div>
-
                     <div className="mod-action">
                       <a
-                        href={`https://modrinth.com/mod/${mod.slug}`}
+                        href={isCurseForge
+                          ? `https://www.curseforge.com/minecraft/mc-mods/${mod.slug}`
+                          : `https://modrinth.com/mod/${mod.slug}`}
                         target="_blank"
                         rel="noreferrer"
                         className="modrinth-link-icon"
-                        title="Открыть на Modrinth"
+                        title={`Открыть на ${platform === "modrinth" ? "Modrinth" : "CurseForge"}`}
                         onClick={(e) => {
                           e.preventDefault();
-                          window.murflame?.shell.open(`https://modrinth.com/mod/${mod.slug}`);
+                          window.murflame?.shell.open(isCurseForge
+                            ? `https://www.curseforge.com/minecraft/mc-mods/${mod.slug}`
+                            : `https://modrinth.com/mod/${mod.slug}`);
                         }}
                       >
                         <ExternalLink size={16} />
                       </a>
-
-                      {state.status === "idle" && (
+                      {installedFileName && (
+                        <button
+                          type="button"
+                          className="btn btn-danger mod-download-btn"
+                          disabled={!activeInstance}
+                          onClick={() => handleRemoveMod(installedFileName, mod.id)}
+                        >
+                          <Trash2 size={14} />
+                          Удалить
+                        </button>
+                      )}
+                      {!installedFileName && state.status === "idle" && (
                         <button
                           type="button"
                           className="btn btn-primary mod-download-btn"
                           disabled={!activeInstance}
-                          onClick={() => handleInstall(mod.id)}
+                          onClick={() => handleInstall(
+                            mod.id,
+                            isCurseForge ? (mod as CurseForgeProject).latest_file_id : undefined
+                          )}
                         >
                           <Download size={14} />
                           Скачать
                         </button>
                       )}
-
-                      {state.status === "installing" && (
+                      {!installedFileName && state.status === "installing" && (
                         <button
                           type="button"
                           className="btn btn-secondary mod-download-btn"
@@ -401,22 +452,23 @@ export function ModsPage() {
                           Установка...
                         </button>
                       )}
-
-                      {state.status === "installed" && (
+                      {!installedFileName && state.status === "installed" && (
                         <div className="mod-status-success" title="Мод успешно скачан и установлен">
                           <Check size={16} />
                           Установлено
                         </div>
                       )}
-
-                      {state.status === "error" && (
+                      {!installedFileName && state.status === "error" && (
                         <div className="mod-status-error" title={state.error}>
                           <AlertTriangle size={14} />
                           Ошибка
                           <button
                             type="button"
                             className="mod-retry-btn"
-                            onClick={() => handleInstall(mod.id)}
+                            onClick={() => handleInstall(
+                              mod.id,
+                              isCurseForge ? (mod as CurseForgeProject).latest_file_id : undefined
+                            )}
                             title="Повторить попытку"
                           >
                             🔄
@@ -428,8 +480,6 @@ export function ModsPage() {
                 );
               })}
             </div>
-
-            {/* Pagination footer */}
             <div className="mods-pagination">
               <button
                 type="button"

@@ -7,6 +7,7 @@ import type { LaunchProgress } from "./types.js";
 import { installForge, installFabric } from "@xmcl/installer";
 import iconv from "iconv-lite";
 import AdmZip from "adm-zip";
+import http from "http";
 
 type ProgressSender = (p: LaunchProgress) => void;
 
@@ -15,6 +16,8 @@ declare global {
 }
 
 let currentGameProcess: ChildProcess | null = null;
+let skinServer: http.Server | null = null;
+let skinServerPort: number = 0;
 
 // Альтернативные репозитории для старых библиотек
 const ALTERNATIVE_REPOSITORIES = [
@@ -375,6 +378,137 @@ async function loadVersionJson(versionId: string, gameDir: string): Promise<any>
   return mergedJson;
 }
 
+// Запуск локального HTTP сервера для подмены скинов
+function startSkinServer(gameDir: string, accountUuid: string, accountType?: string, skinUrl?: string, capeUrl?: string, localSkinPath?: string): Promise<number> {
+  return new Promise((resolve, reject) => {
+    if (skinServer) {
+      skinServer.close();
+      skinServer = null;
+    }
+    
+    const skinsDir = path.join(gameDir, "skins");
+    if (!existsSync(skinsDir)) {
+      mkdirSync(skinsDir, { recursive: true });
+    }
+    
+    const server = http.createServer(async (req, res) => {
+      try {
+        const url = req.url || "";
+        
+        // Запрос на получение скина по UUID
+        if (url.includes("/skins/") || url.includes("/minecraftskins/")) {
+          let uuid = url.split("/").pop()?.replace(".png", "") || "";
+          
+          let skinFile = path.join(skinsDir, `${uuid}.png`);
+          if (localSkinPath && existsSync(localSkinPath)) {
+            skinFile = localSkinPath;
+          } else if (!existsSync(skinFile)) {
+            try {
+              let downloadUrl: string | undefined;
+              if (accountType === "ely" && skinUrl) {
+                downloadUrl = skinUrl;
+              } else {
+                downloadUrl = `https://mc-heads.net/skin/${uuid}`;
+              }
+              
+              if (downloadUrl) {
+                const response = await fetch(downloadUrl);
+                if (response.ok) {
+                  const buffer = Buffer.from(await response.arrayBuffer());
+                  await fs.writeFile(skinFile, buffer);
+                }
+              }
+            } catch (e) {
+              console.warn(`[MurFlame] Failed to download skin: ${e}`);
+            }
+          }
+          
+          if (existsSync(skinFile)) {
+            const skinBuffer = await fs.readFile(skinFile);
+            res.writeHead(200, { 
+              "Content-Type": "image/png",
+              "Content-Length": skinBuffer.length
+            });
+            res.end(skinBuffer);
+            return;
+          }
+        }
+        
+        // Запрос на получение профиля (подмена ответа для скинов)
+        if (url.includes("/session/minecraft/profile/")) {
+          const uuid = url.split("/").pop()?.split("?")[0] || "";
+          
+          let finalSkinUrl = `http://localhost:${(server.address() as any).port}/skins/${uuid}.png`;
+          if (localSkinPath) {
+            finalSkinUrl = `http://localhost:${(server.address() as any).port}/skins/${path.basename(localSkinPath)}`;
+          }
+          
+          const textures: any = {
+            SKIN: {
+              url: finalSkinUrl,
+              metadata: { model: "slim" }
+            }
+          };
+          
+          if (capeUrl) {
+            textures.CAPE = { url: capeUrl };
+          }
+          
+          const responseData = {
+            id: uuid,
+            name: "",
+            properties: [
+              {
+                name: "textures",
+                value: Buffer.from(JSON.stringify({
+                  timestamp: Date.now(),
+                  profileId: uuid,
+                  profileName: "",
+                  textures: textures
+                })).toString("base64")
+              }
+            ]
+          };
+          
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify(responseData));
+          return;
+        }
+        
+        // Запрос на получение скина по URL
+        if (url.includes("/textures/") || url.includes("/skin/")) {
+          if (localSkinPath && existsSync(localSkinPath)) {
+            const skinBuffer = await fs.readFile(localSkinPath);
+            res.writeHead(200, { "Content-Type": "image/png" });
+            res.end(skinBuffer);
+            return;
+          }
+        }
+        
+        res.writeHead(404);
+        res.end();
+      } catch (err) {
+        console.error("[MurFlame] Skin server error:", err);
+        res.writeHead(500);
+        res.end();
+      }
+    });
+    
+    server.on("error", (err) => {
+      console.error("[MurFlame] Skin server error:", err);
+      reject(err);
+    });
+    
+    server.listen(0, "127.0.0.1", () => {
+      const port = (server.address() as any).port;
+      skinServer = server;
+      skinServerPort = port;
+      console.log(`[MurFlame] Skin server started on port ${port}`);
+      resolve(port);
+    });
+  });
+}
+
 async function launchMinecraft(
   versionId: string,
   instancePath: string,
@@ -384,7 +518,12 @@ async function launchMinecraft(
   maxMemory: number,
   username: string,
   accessToken: string,
-  send: ProgressSender
+  send: ProgressSender,
+  accountUuid?: string,
+  accountType?: string,
+  accountSkinUrl?: string,
+  accountCapeUrl?: string,
+  skinPath?: string
 ): Promise<ChildProcess> {
   console.log(`[MurFlame] Launching Minecraft ${versionId}`);
   
@@ -401,6 +540,16 @@ async function launchMinecraft(
   const nativesDir = path.join(versionDir, "natives");
   if (!existsSync(nativesDir)) {
     mkdirSync(nativesDir, { recursive: true });
+  }
+  
+  // Запускаем сервер подмены скинов (если есть UUID)
+  let skinServerPort = 0;
+  if (accountUuid) {
+    try {
+      skinServerPort = await startSkinServer(gameDir, accountUuid, accountType, accountSkinUrl, accountCapeUrl, skinPath);
+    } catch (err) {
+      console.warn("[MurFlame] Failed to start skin server:", err);
+    }
   }
   
   sendDefault(send, { stage: "libraries", percent: 60, message: "Загрузка библиотек..." });
@@ -468,7 +617,7 @@ async function launchMinecraft(
         processed = processed.replace(/\${game_directory}/g, instancePath);
         processed = processed.replace(/\${assets_root}/g, path.join(gameDir, "assets"));
         processed = processed.replace(/\${assets_index_name}/g, assetIndex);
-        processed = processed.replace(/\${auth_uuid}/g, "00000000-0000-0000-0000-000000000000");
+        processed = processed.replace(/\${auth_uuid}/g, accountUuid || "00000000-0000-0000-0000-000000000000");
         processed = processed.replace(/\${auth_access_token}/g, accessToken);
         processed = processed.replace(/\${user_type}/g, "legacy");
         processed = processed.replace(/\${version_type}/g, "release");
@@ -486,118 +635,116 @@ async function launchMinecraft(
     oldArgs = oldArgs.replace(/\${game_directory}/g, instancePath);
     oldArgs = oldArgs.replace(/\${assets_root}/g, path.join(gameDir, "assets"));
     oldArgs = oldArgs.replace(/\${assets_index_name}/g, assetIndex);
-    oldArgs = oldArgs.replace(/\${auth_uuid}/g, "00000000-0000-0000-0000-000000000000");
+    oldArgs = oldArgs.replace(/\${auth_uuid}/g, accountUuid || "00000000-0000-0000-0000-000000000000");
     oldArgs = oldArgs.replace(/\${auth_access_token}/g, accessToken);
     oldArgs = oldArgs.replace(/\${user_type}/g, "legacy");
     oldArgs = oldArgs.replace(/\${version_type}/g, "release");
     gameArgs = oldArgs.split(" ");
   }
   
+  // ============ АРГУМЕНТЫ ДЛЯ СКИНОВ И АУТЕНТИФИКАЦИИ ============
   if (!isModernForge) {
-    const hasAccessToken = gameArgs.some(arg => arg === "--accessToken");
-    if (!hasAccessToken) {
-      gameArgs.push("--accessToken", accessToken || "0");
-    }
-    
-    const hasUsername = gameArgs.some(arg => arg === "--username");
-    if (!hasUsername) {
-      gameArgs.unshift("--username", username || "Player");
-    }
-    
-    const hasVersion = gameArgs.some(arg => arg === "--version");
-    if (!hasVersion) {
-      gameArgs.unshift("--version", versionId);
-    }
-    
-    const hasGameDir = gameArgs.some(arg => arg === "--gameDir");
-    if (!hasGameDir) {
-      gameArgs.unshift("--gameDir", instancePath);
-    }
-    
-    const hasAssetsDir = gameArgs.some(arg => arg === "--assetsDir");
-    if (!hasAssetsDir) {
-      gameArgs.unshift("--assetsDir", path.join(gameDir, "assets"));
-    }
-    
-    const hasAssetIndex = gameArgs.some(arg => arg === "--assetIndex");
-    if (!hasAssetIndex) {
-      gameArgs.unshift("--assetIndex", assetIndex);
-    }
-    
-    const hasUuid = gameArgs.some(arg => arg === "--uuid");
-    if (!hasUuid) {
-      gameArgs.unshift("--uuid", "00000000-0000-0000-0000-000000000000");
-    }
-    
-    const hasUserType = gameArgs.some(arg => arg === "--userType");
-    if (!hasUserType) {
-      gameArgs.unshift("--userType", "legacy");
-    }
-    
-    const hasVersionType = gameArgs.some(arg => arg === "--versionType");
-    if (!hasVersionType) {
-      gameArgs.unshift("--versionType", "release");
-    }
-    
-    // Для 1.7.10 нужен правильный формат --userProperties
-    if (getMajorVersion(mcVersion) === 7) {
-      const userPropIndex = gameArgs.findIndex(arg => arg === "--userProperties");
-      if (userPropIndex !== -1) {
-        gameArgs.splice(userPropIndex, 2);
+    // Удаляем старые аргументы аутентификации если есть
+    const authArgs = ["--accessToken", "--uuid", "--userType", "--userProperties"];
+    for (let i = 0; i < gameArgs.length; i++) {
+      if (authArgs.includes(gameArgs[i])) {
+        gameArgs.splice(i, 2);
+        i--;
       }
-      // Передаём пустой JSON объект как строку
+    }
+    
+    // Удаляем старые gameDir и assetsDir если есть
+    const pathArgs = ["--gameDir", "--assetsDir", "--assetIndex", "--version"];
+    for (let i = 0; i < gameArgs.length; i++) {
+      if (pathArgs.includes(gameArgs[i])) {
+        gameArgs.splice(i, 2);
+        i--;
+      }
+    }
+    
+    // Добавляем ВСЕ аргументы в правильном порядке
+    gameArgs.unshift("--username", username || "Player");
+    gameArgs.unshift("--version", versionId);
+    gameArgs.unshift("--gameDir", instancePath);
+    gameArgs.unshift("--assetsDir", path.join(gameDir, "assets"));
+    gameArgs.unshift("--assetIndex", assetIndex);
+    
+    // Аутентификационные аргументы
+    gameArgs.push("--uuid", accountUuid || "00000000-0000-0000-0000-000000000000");
+    gameArgs.push("--accessToken", accessToken || "0");
+    gameArgs.push("--userType", "msa");
+    gameArgs.push("--versionType", "release");
+    
+    // Добавляем аргументы для подмены скинов (если запущен сервер)
+    if (skinServerPort > 0) {
+      // Подмена API сервера скинов
+      jvmArgs.unshift(`-Dminecraft.api.auth.host=http://localhost:${skinServerPort}`);
+      jvmArgs.unshift(`-Dminecraft.api.account.host=http://localhost:${skinServerPort}`);
+      jvmArgs.unshift(`-Dminecraft.api.session.host=http://localhost:${skinServerPort}`);
+      jvmArgs.unshift(`-Dminecraft.api.services.host=http://localhost:${skinServerPort}`);
+      
+      // Подмена URL для скинов
+      gameArgs.push("--skinHost", `http://localhost:${skinServerPort}`);
+    }
+    
+    // Для старых версий
+    if (getMajorVersion(mcVersion) === 7) {
       gameArgs.push("--userProperties", "{}");
     }
+    
+    // Добавляем tweakClass если нужно
+    if (isForge && !isModernForge) {
+      const tweakClass = getMajorVersion(mcVersion) >= 12
+        ? "net.minecraftforge.fml.common.launcher.FMLTweaker"
+        : "cpw.mods.fml.common.launcher.FMLTweaker";
+      
+      const hasTweakClass = gameArgs.some(arg => arg === "--tweakClass");
+      if (!hasTweakClass) {
+        gameArgs.unshift("--tweakClass", tweakClass);
+      }
+    }
   }
+  // ==============================================================
   
   const allArgs = [...jvmArgs, ...gameArgs];
   
   console.log(`[MurFlame] Java: ${javaPath}`);
   console.log(`[MurFlame] Main class: ${mainClass}`);
+  console.log(`[MurFlame] User type: ${!isModernForge ? "mojang" : "legacy"}`);
+  console.log(`[MurFlame] Skin server port: ${skinServerPort}`);
   console.log(`[MurFlame] Total arguments: ${allArgs.length}`);
   
   sendDefault(send, { stage: "launch", percent: 90, message: "Запуск Minecraft..." });
   
+  // ============ ИСПРАВЛЕННЫЙ spawn для отсоединения процесса ============
   const child = spawn(javaPath, allArgs, {
     cwd: instancePath,
     env: {
       ...process.env,
       JAVA_HOME: path.dirname(path.dirname(javaPath)),
     },
-    stdio: ["ignore", "pipe", "pipe"],
+    stdio: ["ignore", "ignore", "ignore"],  // Изменено с "pipe" на "ignore"
+    detached: true,  // 👈 ПРОЦЕСС БУДЕТ РАБОТАТЬ ОТДЕЛЬНО
     windowsVerbatimArguments: false
   });
   
-  child.stdout?.on("data", (data) => {
-    let output: string;
-    if (process.platform === "win32") {
-      output = iconv.decode(Buffer.from(data), "cp866");
-    } else {
-      output = data.toString();
-    }
-    console.log(`[Minecraft] ${output.trim()}`);
-    
-    if (output.includes("Loading") || output.includes("Starting") || 
-        output.includes("Setting up") || output.includes("Environment") ||
-        output.includes("ModLauncher") || output.includes("FML")) {
-      sendDefault(send, { stage: "running", percent: 100, message: "Игра запущена!" });
-    }
-  });
+  // Отсоединяем дочерний процесс от родительского
+  child.unref();
   
-  child.stderr?.on("data", (data) => {
-    let output: string;
-    if (process.platform === "win32") {
-      output = iconv.decode(Buffer.from(data), "cp866");
-    } else {
-      output = data.toString();
-    }
-    console.error(`[Minecraft Error] ${output.trim()}`);
-  });
+  // stdout/stderr больше не нужны, так как stdio: "ignore"
+  // child.stdout?.on и child.stderr?.on можно удалить или оставить закомментированными
   
   child.on("close", (code) => {
     console.log(`[MurFlame] Minecraft exited with code ${code}`);
     currentGameProcess = null;
     sendDefault(send, { stage: "closed", percent: 100, message: `Игра закрыта` });
+    
+    // Закрываем сервер скинов
+    if (skinServer) {
+      skinServer.close();
+      skinServer = null;
+      skinServerPort = 0;
+    }
   });
   
   child.on("error", (err) => {
@@ -741,7 +888,12 @@ export async function runLaunchGame(
   send: ProgressSender,
   loader?: string,
   username?: string,
-  accessToken?: string
+  accessToken?: string,
+  accountUuid?: string,
+  accountType?: string,
+  accountSkinUrl?: string,
+  accountCapeUrl?: string,
+  skinPath?: string
 ) {
   if (!versionId) throw new Error("Не выбрана версия");
 
@@ -869,7 +1021,12 @@ export async function runLaunchGame(
     maxMemory,
     username || "Player",
     accessToken || "0",
-    send
+    send,
+    accountUuid,
+    accountType,
+    accountSkinUrl,
+    accountCapeUrl,
+    skinPath
   );
 }
 

@@ -49,7 +49,47 @@ import {
 } from "./instances.js";
 import { runLaunchGame, killGameProcess, isGameRunning } from "./launchGame.js";
 
+import { 
+  elyGetAuthUrl,
+  elyExchangeCode,
+  elyRefreshToken,
+  elyChangeSkin,
+  elyResetSkin,
+  elyChangeCape,
+  elyResetCape,
+  elyGetSkinUrl,
+  elyGetCapeUrl,
+  elyGetCapesList,
+  elyEquipCape,
+  type ElyCape
+} from "./elyApi.js";
+
+function getIconPath(): string {
+  const possiblePaths = [
+    path.join(__dirname, '../assets/icon.ico'),
+    path.join(__dirname, '../../assets/icon.ico'),
+    path.join(process.resourcesPath, 'assets/icon.ico'),
+    path.join(__dirname, '../public/icon.png'),
+    path.join(process.cwd(), 'assets/icon.png'),
+    path.join(process.cwd(), 'build/icon.ico'),
+    path.join(process.cwd(), 'icon.ico'),
+  ];
+  
+  for (const p of possiblePaths) {
+    if (existsSync(p)) {
+      console.log("[MurFlame] Found icon at:", p);
+      return p;
+    }
+  }
+  
+  console.warn("[MurFlame] No icon found, using fallback");
+  return "";
+}
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+// CurseForge API Key
+const CURSEFORGE_API_KEY = "$2a$10$gMQT9tYeQt.cfI25zNSexeCAAn99GM9l8qnU1ez4dqLFmPFPxEOoC";
 
 // Кэш для часто используемых данных
 const manifestCache: Map<string, any> = new Map();
@@ -123,18 +163,7 @@ function resolvePreloadPath(): string {
 }
 
 function createTray() {
-  let iconPath = path.join(__dirname, '../assets/icon.ico');
-  
-  if (!existsSync(iconPath)) {
-    iconPath = path.join(__dirname, '../../assets/icon.ico');
-  }
-  if (!existsSync(iconPath)) {
-    iconPath = path.join(process.resourcesPath, 'assets/icon.ico');
-  }
-  if (!existsSync(iconPath)) {
-    iconPath = path.join(__dirname, '../public/icon.png');
-  }
-  
+  const iconPath = getIconPath();
   let icon = nativeImage.createFromPath(iconPath);
   
   if (icon.isEmpty()) {
@@ -199,11 +228,8 @@ function createTray() {
 function createWindow() {
   const settings = resolveSettings();
   
-  let windowIconPath = path.join(__dirname, '../assets/icon.ico');
-  if (!existsSync(windowIconPath)) {
-    windowIconPath = path.join(__dirname, '../public/icon.png');
-  }
-  const windowIcon = nativeImage.createFromPath(windowIconPath);
+  const iconPath = getIconPath();
+  const windowIcon = nativeImage.createFromPath(iconPath);
   
   mainWindow = new BrowserWindow({
     width: settings.windowWidth,
@@ -833,6 +859,24 @@ async function launchGame(versionId: string, instancePath: string, loader?: stri
 
   if (account.type === "microsoft") {
     account = await refreshMicrosoftToken(account);
+  } else if (account.type === "ely" && account.refreshToken) {
+    if (account.expiresAt && account.expiresAt < Date.now()) {
+      try {
+        const refreshed = await elyRefreshToken(account.refreshToken);
+        account.accessToken = refreshed.accessToken;
+        account.refreshToken = refreshed.refreshToken;
+        account.expiresAt = refreshed.expiresAt;
+        saveAccount(account);
+      } catch (e) {
+        console.warn("Failed to refresh ely.by token:", e);
+      }
+    }
+  }
+
+  // Получаем локальный путь к скину, если он установлен
+  let skinPath: string | undefined = undefined;
+  if (account.localSkinPath && existsSync(account.localSkinPath)) {
+    skinPath = account.localSkinPath;
   }
 
   await runLaunchGame(
@@ -842,7 +886,12 @@ async function launchGame(versionId: string, instancePath: string, loader?: stri
     (p) => send("launch:progress", p),
     loader,
     account.username,
-    account.accessToken
+    account.accessToken,
+    account.uuid,
+    account.type,
+    account.skinUrl,
+    account.capeUrl,
+    skinPath
   );
 
   const instances = getInstances();
@@ -904,7 +953,31 @@ function registerIpc() {
   });
 
   ipcMain.handle("java:list", () => findJavaInstallations());
+  
+  // ========== ОБРАБОТЧИКИ ВЕРСИЙ ==========
+  ipcMain.handle("versions:list", async () => {
+    try {
+      return await getVersions();
+    } catch (e) {
+      console.error("[MurFlame] versions:list failed:", e);
+      throw e;
+    }
+  });
+  
+  ipcMain.handle("versions:install", (_e, id: string) => installVersion(id));
+  
+  ipcMain.handle("versions:delete", async (_e, id: string) => {
+    const settings = resolveSettings();
+    const versionDir = path.join(settings.gameDir, "versions", id);
+    if (existsSync(versionDir)) {
+      await fs.rm(versionDir, { recursive: true, force: true });
+      versionCache.delete(id);
+    }
+  });
+  
+  ipcMain.handle("versions:last", () => store.get("lastVersion"));
 
+  // ========== ОБРАБОТЧИКИ АККАУНТОВ ==========
   ipcMain.handle("accounts:list", async () => {
     const accounts = store.get("accounts") as Account[];
     const out: Account[] = [];
@@ -919,6 +992,20 @@ function registerIpc() {
           updated.refreshToken = refreshed.refreshToken ?? acc.refreshToken;
           updated.expiresAt = refreshed.expiresAt ?? acc.expiresAt;
           out.push(updated);
+        } catch {
+          out.push(acc);
+        }
+      } else if (acc.type === "ely" && acc.refreshToken) {
+        try {
+          const refreshed = await elyRefreshToken(acc.refreshToken);
+          acc.accessToken = refreshed.accessToken;
+          acc.refreshToken = refreshed.refreshToken;
+          acc.expiresAt = refreshed.expiresAt;
+          if (acc.uuid) {
+            acc.skinUrl = await elyGetSkinUrl(acc.uuid);
+            acc.capeUrl = await elyGetCapeUrl(acc.uuid);
+          }
+          out.push(acc);
         } catch {
           out.push(acc);
         }
@@ -952,29 +1039,118 @@ function registerIpc() {
   ipcMain.handle("accounts:offline", (_e, username: string) => offlineLogin(username));
   ipcMain.handle("accounts:microsoftLogin", () => microsoftLoginInteractive());
   ipcMain.handle("accounts:microsoft", (_e, code: string) => microsoftLoginWithCode(code));
+  
+  // ========== ОБРАБОТЧИК ELY.BY (ТОЛЬКО ОДИН РАЗ!) ==========
+  ipcMain.handle("accounts:elyLogin", async () => {
+    return new Promise(async (resolve, reject) => {
+      const authUrl = await elyGetAuthUrl();
+      
+      const authWindow = new BrowserWindow({
+        width: 520,
+        height: 720,
+        parent: mainWindow ?? undefined,
+        modal: Boolean(mainWindow),
+        title: "Вход в ely.by",
+        autoHideMenuBar: true,
+        webPreferences: {
+          nodeIntegration: false,
+          contextIsolation: true,
+        },
+      });
+      
+      let finished = false;
+      
+      const finish = (fn: () => void) => {
+        if (finished) return;
+        finished = true;
+        fn();
+      };
+      
+      const handleNavigation = async (url: string) => {
+        console.log("[MurFlame] Navigation to:", url);
+        
+        if (url.startsWith("murflame://auth")) {
+          try {
+            const parsed = new URL(url);
+            const code = parsed.searchParams.get("code");
+            const error = parsed.searchParams.get("error");
+            
+            if (error) {
+              finish(() => {
+                authWindow.close();
+                reject(new Error(decodeURIComponent(error)));
+              });
+              return;
+            }
+            
+            if (code) {
+              finish(async () => {
+                authWindow.close();
+                try {
+                  const profile = await elyExchangeCode(code);
+                  const account: Account = {
+                    id: profile.id,
+                    type: "ely",
+                    username: profile.username,
+                    uuid: profile.id,
+                    accessToken: profile.accessToken,
+                    refreshToken: profile.refreshToken,
+                    expiresAt: profile.expiresAt,
+                    skinUrl: await elyGetSkinUrl(profile.id),
+                    capeUrl: await elyGetCapeUrl(profile.id),
+                  };
+                  
+                  let accounts = store.get("accounts") as Account[];
+                  const activeAccountId = store.get("activeAccountId") as string | null;
+                  const activeAccount = activeAccountId ? accounts.find(a => a.id === activeAccountId) : null;
+                  
+                  if (activeAccount && activeAccount.type === "offline") {
+                    accounts = accounts.map(a => a.id === activeAccountId ? account : a);
+                    store.set("accounts", accounts);
+                    resolve(account);
+                  } else {
+                    resolve(saveAccount(account));
+                  }
+                } catch (e) {
+                  reject(e);
+                }
+              });
+            }
+          } catch (e) {
+            console.error("[MurFlame] Error parsing URL:", e);
+          }
+        }
+      };
+      
+      authWindow.webContents.on("will-redirect", (_e, url) => {
+        console.log("[MurFlame] will-redirect:", url);
+        handleNavigation(url);
+      });
+      
+      authWindow.webContents.on("did-navigate", (_e, url) => {
+        console.log("[MurFlame] did-navigate:", url);
+        handleNavigation(url);
+      });
+      
+      authWindow.webContents.on("did-navigate-in-page", (_e, url) => {
+        console.log("[MurFlame] did-navigate-in-page:", url);
+        handleNavigation(url);
+      });
+      
+      authWindow.on("closed", () => {
+        finish(() => reject(new Error("Вход отменён")));
+      });
+      
+      authWindow.loadURL(authUrl).catch((e) => {
+        finish(() => {
+          authWindow.close();
+          reject(e);
+        });
+      });
+    });
+  });
 
-  ipcMain.handle("versions:list", async () => {
-    try {
-      return await getVersions();
-    } catch (e) {
-      console.error("[MurFlame] versions:list failed:", e);
-      throw e;
-    }
-  });
-  
-  ipcMain.handle("versions:install", (_e, id: string) => installVersion(id));
-  
-  ipcMain.handle("versions:delete", async (_e, id: string) => {
-    const settings = resolveSettings();
-    const versionDir = path.join(settings.gameDir, "versions", id);
-    if (existsSync(versionDir)) {
-      await fs.rm(versionDir, { recursive: true, force: true });
-      versionCache.delete(id);
-    }
-  });
-  
-  ipcMain.handle("versions:last", () => store.get("lastVersion"));
-  
+  // ========== ОСТАЛЬНЫЕ ОБРАБОТЧИКИ (game, instances, modrinth, curseforge, mods, skin и т.д.) ==========
   ipcMain.handle("game:launch", (_e, versionId: string, instancePath: string, loader?: string) => 
     launchGame(versionId, instancePath, loader)
   );
@@ -1288,6 +1464,9 @@ function registerIpc() {
     const acc = store.get("accounts").find((a: Account) => a.id === accountId);
     if (!acc) return "";
     if (acc.type === "microsoft") return resolveAvatarUrl(acc);
+    if (acc.type === "ely" && acc.uuid) {
+      return `https://skinsystem.ely.by/textures/skin/${acc.uuid}`;
+    }
     if (acc.skinHeadUrl?.startsWith("data:")) return acc.skinHeadUrl;
     if (acc.localSkinPath && existsSync(acc.localSkinPath)) {
       const buf = await fs.readFile(acc.localSkinPath);
@@ -1299,15 +1478,24 @@ function registerIpc() {
   ipcMain.handle("skin:sync", async (_e, accountId: string) => {
     const acc = store.get("accounts").find((a: Account) => a.id === accountId);
     if (!acc) throw new Error("Аккаунт не найден");
-    if (acc.type !== "microsoft" || !acc.accessToken) return acc;
-    const refreshed = await refreshMicrosoftToken(acc);
-    const updated = await applyProfileToAccount(
-      { ...acc, accessToken: refreshed.accessToken },
-      refreshed.accessToken!
-    );
-    updated.refreshToken = refreshed.refreshToken ?? acc.refreshToken;
-    updated.expiresAt = refreshed.expiresAt ?? acc.expiresAt;
-    return saveAccount(updated);
+    if (acc.type === "microsoft" && acc.accessToken) {
+      const refreshed = await refreshMicrosoftToken(acc);
+      const updated = await applyProfileToAccount(
+        { ...acc, accessToken: refreshed.accessToken },
+        refreshed.accessToken!
+      );
+      updated.refreshToken = refreshed.refreshToken ?? acc.refreshToken;
+      updated.expiresAt = refreshed.expiresAt ?? acc.expiresAt;
+      return saveAccount(updated);
+    }
+    if (acc.type === "ely" && acc.uuid) {
+      const skinUrl = await elyGetSkinUrl(acc.uuid);
+      const capeUrl = await elyGetCapeUrl(acc.uuid);
+      acc.skinUrl = skinUrl;
+      acc.capeUrl = capeUrl;
+      return saveAccount(acc);
+    }
+    return acc;
   });
 
   ipcMain.handle("skin:previewHead", async (_e, filePath: string) => {
@@ -1354,6 +1542,14 @@ function registerIpc() {
       await fs.writeFile(dest, buf);
       return saveAccount(updated);
     }
+    
+    if (acc.type === "ely" && acc.accessToken) {
+      await elyChangeSkin(acc.accessToken, filePath, variant);
+      if (acc.uuid) {
+        acc.skinUrl = await elyGetSkinUrl(acc.uuid);
+      }
+      return saveAccount(acc);
+    }
 
     acc.localSkinPath = dest;
     acc.skinHeadUrl = skinBufferToHeadDataUrl(buf, 96);
@@ -1398,11 +1594,123 @@ function registerIpc() {
         return saveAccount(acc);
       }
     }
+    
+    if (acc.type === "ely" && acc.accessToken) {
+      await elyResetSkin(acc.accessToken);
+      if (acc.uuid) {
+        acc.skinUrl = await elyGetSkinUrl(acc.uuid);
+      }
+      return saveAccount(acc);
+    }
 
     acc.skinUrl = accountSkinUrl(acc);
     delete acc.skinHeadUrl;
     delete acc.skinTextureUrl;
     return saveAccount(acc);
+  });
+
+  // Плащи
+  ipcMain.handle("skin:getCapes", async (_e, accountId: string) => {
+    const accounts = store.get("accounts") as Account[];
+    const acc = accounts.find((a: Account) => a.id === accountId);
+    if (!acc) return [];
+    
+    if (acc.type === "ely" && acc.accessToken) {
+      return await elyGetCapesList(acc.accessToken);
+    }
+    
+    if (acc.type === "microsoft" && acc.accessToken) {
+      try {
+        const refreshed = await refreshMicrosoftToken(acc);
+        const mojang = new MojangClient({});
+        const profile = await mojang.getProfile(refreshed.accessToken!);
+        return (profile.capes || []).map((c: any) => ({
+          id: c.id,
+          name: c.alias || "Cape",
+          url: c.url,
+          owned: true,
+          current: c.state === "ACTIVE"
+        }));
+      } catch (e) {
+        console.error("Failed to get Microsoft capes:", e);
+        return [];
+      }
+    }
+    
+    return [];
+  });
+
+  ipcMain.handle("skin:setOfficialCape", async (_e, accountId: string, capeId: string) => {
+    const accounts = store.get("accounts") as Account[];
+    const acc = accounts.find((a: Account) => a.id === accountId);
+    if (!acc) throw new Error("Аккаунт не найден");
+    
+    if (acc.type === "ely" && acc.accessToken) {
+      await elyEquipCape(acc.accessToken, capeId);
+      if (acc.uuid) {
+        acc.capeUrl = await elyGetCapeUrl(acc.uuid);
+      }
+      return saveAccount(acc);
+    }
+    
+    if (acc.type === "microsoft" && acc.accessToken) {
+      try {
+        const refreshed = await refreshMicrosoftToken(acc);
+        const mojang = new MojangClient({}) as any;
+        if (typeof mojang.setCape === "function") {
+          await mojang.setCape(capeId, refreshed.accessToken!);
+        } else if (typeof mojang.equipCape === "function") {
+          await mojang.equipCape(capeId, refreshed.accessToken!);
+        }
+        // Refresh the account
+        const updated = await applyProfileToAccount(
+          { ...acc, accessToken: refreshed.accessToken },
+          refreshed.accessToken!
+        );
+        updated.refreshToken = refreshed.refreshToken ?? acc.refreshToken;
+        updated.expiresAt = refreshed.expiresAt ?? acc.expiresAt;
+        return saveAccount(updated);
+      } catch (e) {
+        console.error("Failed to set Microsoft cape:", e);
+        throw new Error("Не удалось установить плащ");
+      }
+    }
+    
+    throw new Error("Установка официальных плащей доступна только для ely.by и Microsoft");
+  });
+
+  ipcMain.handle("skin:resetCape", async (_e, accountId: string) => {
+    const accounts = store.get("accounts") as Account[];
+    const acc = accounts.find((a: Account) => a.id === accountId);
+    if (!acc) throw new Error("Аккаунт не найден");
+    
+    if (acc.type === "ely" && acc.accessToken) {
+      await elyResetCape(acc.accessToken!);
+      acc.capeUrl = null;
+      return saveAccount(acc);
+    }
+    
+    if (acc.type === "microsoft" && acc.accessToken) {
+      try {
+        const refreshed = await refreshMicrosoftToken(acc);
+        const mojang = new MojangClient({}) as any;
+        if (typeof mojang.resetCape === "function") {
+          await mojang.resetCape(refreshed.accessToken!);
+        }
+        const updated = await applyProfileToAccount(
+          { ...acc, accessToken: refreshed.accessToken },
+          refreshed.accessToken!
+        );
+        updated.refreshToken = refreshed.refreshToken ?? acc.refreshToken;
+        updated.expiresAt = refreshed.expiresAt ?? acc.expiresAt;
+        return saveAccount(updated);
+      } catch (e) {
+        console.error("Failed to reset Microsoft cape:", e);
+        throw new Error("Не удалось сбросить плащ");
+      }
+    }
+    
+    throw new Error("Сброс плаща доступен только для ely.by и Microsoft");
   });
 
   ipcMain.handle("modrinth:search", async (_e, query: string, version?: string, loader?: string, offset?: number, limit?: number) => {
@@ -1452,6 +1760,26 @@ function registerIpc() {
     }
   });
 
+  // Helper to load installed mods mapping
+  const loadInstalledModsMap = async (instanceFolder: string) => {
+    const mapPath = path.join(instanceFolder, "installed_mods.json");
+    if (!existsSync(mapPath)) {
+      return {};
+    }
+    try {
+      const data = await fs.readFile(mapPath, "utf-8");
+      return JSON.parse(data);
+    } catch {
+      return {};
+    }
+  };
+
+  // Helper to save installed mods mapping
+  const saveInstalledModsMap = async (instanceFolder: string, map: Record<string, string>) => {
+    const mapPath = path.join(instanceFolder, "installed_mods.json");
+    await fs.writeFile(mapPath, JSON.stringify(map, null, 2));
+  };
+
   ipcMain.handle("modrinth:installMod", async (_e, projectId: string, instanceId: string) => {
     try {
       const instances = getInstances();
@@ -1498,11 +1826,197 @@ function registerIpc() {
       
       console.log(`[MurFlame] Downloading mod from ${downloadUrl} to ${destination}`);
       await downloadFile(downloadUrl, destination);
-      console.log(`[MurFlame] Mod installed successfully: ${fileName}`);
       
+      // Save to installed mods map
+      const modMap = await loadInstalledModsMap(instanceFolder);
+      modMap[`modrinth:${projectId}`] = fileName;
+      await saveInstalledModsMap(instanceFolder, modMap);
+      
+      console.log(`[MurFlame] Mod installed successfully: ${fileName}`);
       return true;
     } catch (e) {
       console.error("[MurFlame] Mod install error:", e);
+      throw e;
+    }
+  });
+
+  // ИСПРАВЛЕННЫЙ CurseForge search с правильной авторизацией для старого формата ключа
+  ipcMain.handle("curseforge:search", async (_e, query: string, version?: string, loader?: string, offset?: number, limit?: number) => {
+    try {
+      const limitParam = limit || 20;
+      const offsetParam = offset || 0;
+      
+      const params = new URLSearchParams({
+        searchFilter: query || "",
+        pageSize: limitParam.toString(),
+        index: offsetParam.toString(),
+        gameId: "432",
+        classId: "6",
+      });
+      
+      if (version) params.set("gameVersion", version);
+      if (loader && loader !== "vanilla") params.set("modLoaderTypes", loader.toLowerCase());
+      
+      const url = `https://api.curseforge.com/v1/mods/search?${params.toString()}`;
+      console.log(`[MurFlame] CurseForge Search: ${url}`);
+      
+      const response = await fetch(url, {
+        headers: { 
+          "User-Agent": "MurFlame-Launcher/1.0",
+          "Accept": "application/json",
+          "x-api-key": CURSEFORGE_API_KEY
+        }
+      });
+      
+      if (!response.ok) {
+        throw new Error(`CurseForge API search returned ${response.status}`);
+      }
+      
+      const data = await response.json();
+      const hits = (data.data || []).map((mod: any) => ({
+        id: mod.id.toString(),
+        slug: mod.slug,
+        title: mod.name,
+        description: mod.summary,
+        icon_url: mod.logo?.url || "",
+        downloads: mod.downloadCount || 0,
+        followers: mod.thumbsUpCount || 0,
+        author: mod.authors?.[0]?.name || "",
+        categories: mod.categories?.map((c: any) => c.name) || [],
+        date_modified: mod.dateModified,
+        latest_file_id: mod.latestFiles?.[0]?.id?.toString(),
+        latest_file_name: mod.latestFiles?.[0]?.fileName,
+      }));
+      
+      return {
+        hits,
+        total_hits: data.pagination?.totalCount || 0
+      };
+    } catch (e) {
+      console.error("[MurFlame] CurseForge search error:", e);
+      return { hits: [], total_hits: 0 };
+    }
+  });
+
+  // ИСПРАВЛЕННЫЙ CurseForge installMod с правильной авторизацией для старого формата ключа
+  ipcMain.handle("curseforge:installMod", async (_e, projectId: string, fileId: string, instanceId: string) => {
+    try {
+      const instances = getInstances();
+      const inst = instances.find(i => i.id === instanceId);
+      if (!inst) {
+        throw new Error(`Instance not found: ${instanceId}`);
+      }
+      
+      const settings = resolveSettings();
+      const instanceFolder = await ensureInstanceFolder(settings.gameDir, inst);
+      const modsDir = path.join(instanceFolder, "mods");
+      
+      if (!existsSync(modsDir)) {
+        await fs.mkdir(modsDir, { recursive: true });
+      }
+      
+      const url = `https://api.curseforge.com/v1/mods/${projectId}/files/${fileId}/download-url`;
+      console.log(`[MurFlame] Querying CurseForge download URL for project ${projectId} file ${fileId}`);
+      const response = await fetch(url, {
+        headers: { 
+          "User-Agent": "MurFlame-Launcher/1.0",
+          "Accept": "application/json",
+          "x-api-key": CURSEFORGE_API_KEY
+        }
+      });
+      
+      if (!response.ok) {
+        throw new Error(`CurseForge API download URL lookup failed: ${response.status}`);
+      }
+      
+      const downloadData = await response.json();
+      const downloadUrl = downloadData.data;
+      
+      const fileName = path.basename(new URL(downloadUrl).pathname);
+      const destination = path.join(modsDir, fileName);
+      
+      console.log(`[MurFlame] Downloading mod from ${downloadUrl} to ${destination}`);
+      await downloadFile(downloadUrl, destination);
+      
+      // Save to installed mods map
+      const modMap = await loadInstalledModsMap(instanceFolder);
+      modMap[`curseforge:${projectId}`] = fileName;
+      await saveInstalledModsMap(instanceFolder, modMap);
+      
+      console.log(`[MurFlame] Mod installed successfully: ${fileName}`);
+      return true;
+    } catch (e) {
+      console.error("[MurFlame] CurseForge mod install error:", e);
+      throw e;
+    }
+  });
+
+  // Now returns { files: string[], map: Record<string, string> }
+  ipcMain.handle("mods:listInstalled", async (_e, instanceId: string) => {
+    try {
+      const instances = getInstances();
+      const inst = instances.find(i => i.id === instanceId);
+      if (!inst) {
+        throw new Error(`Instance not found: ${instanceId}`);
+      }
+      
+      const settings = resolveSettings();
+      const instanceFolder = await ensureInstanceFolder(settings.gameDir, inst);
+      const modsDir = path.join(instanceFolder, "mods");
+      
+      const modMap = await loadInstalledModsMap(instanceFolder);
+      
+      if (!existsSync(modsDir)) {
+        return { files: [], map: modMap };
+      }
+      
+      const files = await fs.readdir(modsDir);
+      const modFiles = files.filter(file => file.endsWith(".jar") || file.endsWith(".litemod"));
+      return { files: modFiles, map: modMap };
+    } catch (e) {
+      console.error("[MurFlame] List installed mods error:", e);
+      return { files: [], map: {} };
+    }
+  });
+
+  ipcMain.handle("mods:removeMod", async (_e, instanceId: string, fileName: string, projectKey?: string) => {
+    try {
+      const instances = getInstances();
+      const inst = instances.find(i => i.id === instanceId);
+      if (!inst) {
+        throw new Error(`Instance not found: ${instanceId}`);
+      }
+      
+      const settings = resolveSettings();
+      const instanceFolder = await ensureInstanceFolder(settings.gameDir, inst);
+      const modsDir = path.join(instanceFolder, "mods");
+      const modPath = path.join(modsDir, fileName);
+      
+      if (existsSync(modPath)) {
+        await fs.unlink(modPath);
+        
+        // Remove from map
+        const modMap = await loadInstalledModsMap(instanceFolder);
+        if (projectKey) {
+          delete modMap[projectKey];
+        } else {
+          // If no project key, try to find it
+          for (const [key, value] of Object.entries(modMap)) {
+            if (value === fileName) {
+              delete modMap[key];
+              break;
+            }
+          }
+        }
+        await saveInstalledModsMap(instanceFolder, modMap);
+        
+        console.log(`[MurFlame] Mod removed successfully: ${fileName}`);
+        return true;
+      }
+      
+      return false;
+    } catch (e) {
+      console.error("[MurFlame] Remove mod error:", e);
       throw e;
     }
   });

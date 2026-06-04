@@ -279,7 +279,7 @@ export function SettingsPage() {
         </div>
 
         <div style={{ marginTop: 32, textAlign: "center", color: "var(--text-muted)", fontSize: 14 }}>
-          <p>Версия приложения 03.06</p>
+          <p>Версия приложения 04.06.26</p>
           <p>Создатели: Barsik_topYT, K0maruTrende</p>
         </div>
       </div>

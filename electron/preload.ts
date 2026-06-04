@@ -8,6 +8,8 @@ import type {
   GameInstance,
   InstanceIcon,
   ModLoaderInstallResult,
+  ModrinthProject,
+  CurseForgeProject,
 } from "./types.js";
 
 const api = {
@@ -36,6 +38,8 @@ const api = {
       ipcRenderer.invoke("accounts:offline", username),
     microsoftLogin: (): Promise<Account> =>
       ipcRenderer.invoke("accounts:microsoftLogin"),
+    elyLogin: (): Promise<Account> =>
+      ipcRenderer.invoke("accounts:elyLogin"),
   },
   versions: {
     list: (): Promise<VersionInfo[]> => ipcRenderer.invoke("versions:list"),
@@ -75,6 +79,13 @@ const api = {
     reset: (accountId: string) => ipcRenderer.invoke("skin:reset", accountId),
     sync: (accountId: string) => ipcRenderer.invoke("skin:sync", accountId),
     previewHead: (filePath: string) => ipcRenderer.invoke("skin:previewHead", filePath),
+    getCapes: (accountId: string) => ipcRenderer.invoke("skin:getCapes", accountId),
+    applyCape: (accountId: string, filePath: string) =>
+      ipcRenderer.invoke("skin:applyCape", accountId, filePath),
+    setOfficialCape: (accountId: string, capeId: string) =>
+      ipcRenderer.invoke("skin:setOfficialCape", accountId, capeId),
+    resetCape: (accountId: string) =>
+      ipcRenderer.invoke("skin:resetCape", accountId),
   },
   modloader: {
     list: (loader: string, mcVersion: string) =>
@@ -120,10 +131,34 @@ const api = {
     launch: (id: string) => ipcRenderer.invoke("instances:launch", id),
   },
   modrinth: {
-    search: (query: string, version?: string, loader?: string, offset?: number, limit?: number) =>
+    search: (
+      query: string,
+      version?: string,
+      loader?: string,
+      offset?: number,
+      limit?: number
+    ): Promise<{ hits: ModrinthProject[]; total_hits: number }> =>
       ipcRenderer.invoke("modrinth:search", query, version, loader, offset, limit),
-    installMod: (projectId: string, instanceId: string) =>
+    installMod: (projectId: string, instanceId: string): Promise<boolean> =>
       ipcRenderer.invoke("modrinth:installMod", projectId, instanceId),
+  },
+  curseforge: {
+    search: (
+      query: string,
+      version?: string,
+      loader?: string,
+      offset?: number,
+      limit?: number
+    ): Promise<{ hits: CurseForgeProject[]; total_hits: number }> =>
+      ipcRenderer.invoke("curseforge:search", query, version, loader, offset, limit),
+    installMod: (projectId: string, fileId: string, instanceId: string): Promise<boolean> =>
+      ipcRenderer.invoke("curseforge:installMod", projectId, fileId, instanceId),
+  },
+  mods: {
+    listInstalled: (instanceId: string): Promise<{ files: string[], map: Record<string, string> }> =>
+      ipcRenderer.invoke("mods:listInstalled", instanceId),
+    removeMod: (instanceId: string, fileName: string, projectKey?: string): Promise<boolean> =>
+      ipcRenderer.invoke("mods:removeMod", instanceId, fileName, projectKey),
   },
   onLaunchProgress: (cb: (p: LaunchProgress) => void) => {
     const handler = (_: unknown, data: LaunchProgress) => cb(data);

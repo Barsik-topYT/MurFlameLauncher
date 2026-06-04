@@ -30,17 +30,47 @@
   --border: #d0d0dc;
 }
 
+/* MurFlame theme */
 [data-theme="murflame"] {
-  --bg-primary: #0a0a10;
-  --bg-secondary: #101018;
-  --bg-card: #161622;
-  --text-primary: #ffffff;
-  --text-secondary: #a0a0b0;
-  --text-muted: #6a6a7a;
-  --border: #2a2a38;
-  --accent: var(--user-accent, #ff6b35);
-  --accent-hover: color-mix(in srgb, var(--user-accent, #ff6b35) 80%, white);
-  --accent-glow: color-mix(in srgb, var(--user-accent, #ff6b35) 35%, transparent);
+  --bg-primary: #0f172a;
+  --bg-secondary: #1e293b;
+  --bg-card: #334155;
+  --bg-hover: #475569;
+  --text-primary: #f1f5f9;
+  --text-secondary: #cbd5e1;
+  --text-muted: #94a3b8;
+  --border: #475569;
+  --accent: var(--user-accent, #8b5cf6);
+  --accent-hover: #a78bfa;
+  --accent-glow: rgba(139, 92, 246, 0.35);
+  --success: #4ade80;
+  --danger: #f87171;
+}
+
+/* MurFlame theme specific styles */
+[data-theme="murflame"] .app-shell {
+  background: linear-gradient(180deg, #0f172a 0%, #1e293b 100%);
+}
+
+[data-theme="murflame"] .btn-primary {
+  background: linear-gradient(135deg, var(--accent), #7c3aed);
+  box-shadow: 0 4px 12px var(--accent-glow);
+}
+
+[data-theme="murflame"] .btn-primary:hover:not(:disabled) {
+  background: linear-gradient(135deg, var(--accent-hover), var(--accent));
+  box-shadow: 0 6px 16px var(--accent-glow);
+}
+
+[data-theme="murflame"] .nav-item.active {
+  background: rgba(139, 92, 246, 0.2);
+  border-left: 3px solid var(--accent);
+}
+
+@keyframes gradientShift {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
 }
 
 * {
@@ -57,6 +87,8 @@ html, body, #root {
 body {
   font-family: var(--font);
   background: var(--bg-primary);
+  background-attachment: fixed;
+  background-size: cover;
   color: var(--text-primary);
   user-select: none;
   -webkit-font-smoothing: antialiased;
@@ -1756,4 +1788,76 @@ button, input, select, textarea {
 .border-glow:focus-within {
   border-color: var(--accent) !important;
   box-shadow: 0 0 8px var(--accent-glow);
+}
+
+/* Utility: Flex & gap */
+.flex {
+  display: flex;
+}
+.gap-2 {
+  gap: 8px;
+}
+.gap-4 {
+  gap: 16px;
+}
+.flex-wrap {
+  flex-wrap: wrap;
+}
+.flex-col {
+  flex-direction: column;
+}
+.items-center {
+  align-items: center;
+}
+.justify-between {
+  justify-content: space-between;
+}
+.w-full {
+  width: 100%;
+}
+.mb-6 {
+  margin-bottom: 24px;
+}
+.mb-2 {
+  margin-bottom: 8px;
+}
+.text-lg {
+  font-size: 18px;
+}
+.font-bold {
+  font-weight: 700;
+}
+.text-muted {
+  color: var(--text-muted);
+}
+.text-danger {
+  color: #ef4444;
+}
+.bg-card {
+  background: var(--bg-card);
+}
+.border {
+  border: 1px solid var(--border);
+}
+.rounded-lg {
+  border-radius: var(--radius);
+}
+.px-3 {
+  padding-left: 12px;
+  padding-right: 12px;
+}
+.py-2 {
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+.hover\:bg-hover:hover {
+  background: var(--bg-hover);
+}
+.truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.max-w-xs {
+  max-width: 200px;
 }

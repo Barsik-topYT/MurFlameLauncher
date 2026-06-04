@@ -42,7 +42,7 @@ export const DEFAULT_SETTINGS: LauncherSettings = {
 // Типы для аккаунтов
 export interface Account {
   id: string;
-  type: "microsoft" | "offline";
+  type: "microsoft" | "offline" | "ely";
   username: string;
   uuid: string;
   accessToken?: string;
@@ -141,6 +141,29 @@ export interface ModrinthVersion {
   }[];
 }
 
+export interface CurseForgeProject {
+  id: string;
+  slug: string;
+  title: string;
+  description: string;
+  icon_url: string;
+  downloads: number;
+  followers: number;
+  author?: string;
+  categories?: string[];
+  date_modified?: string;
+  latest_file_id?: string;
+  latest_file_name?: string;
+}
+
+export interface CurseForgeVersion {
+  id: string;
+  name: string;
+  file_id: string;
+  file_name: string;
+  download_url: string;
+}
+
 // Интерфейс API для лаунчера
 export interface MurFlameAPI {
   settings: {
@@ -160,6 +183,7 @@ export interface MurFlameAPI {
     remove: (id: string) => Promise<Account[]>;
     offline: (username: string) => Promise<Account>;
     microsoftLogin: () => Promise<Account>;
+    elyLogin: () => Promise<Account>;
   };
   versions: {
     list: () => Promise<VersionInfo[]>;
@@ -183,7 +207,7 @@ export interface MurFlameAPI {
     }) => Promise<GameInstance>;
     update: (
       id: string,
-      patch: Partial<Omit<GameInstance, "id">>
+      patch: Partial<Omit<GameInstance, "id">
     ) => Promise<GameInstance>;
     updateLoader: (
       id: string,
@@ -204,9 +228,25 @@ export interface MurFlameAPI {
     ) => Promise<{ hits: ModrinthProject[]; total_hits: number }>;
     installMod: (projectId: string, instanceId: string) => Promise<boolean>;
   };
+  curseforge: {
+    search: (
+      query: string,
+      version?: string,
+      loader?: string,
+      offset?: number,
+      limit?: number
+    ) => Promise<{ hits: CurseForgeProject[]; total_hits: number }>;
+    installMod: (projectId: string, fileId: string, instanceId: string) => Promise<boolean>;
+  };
+  mods: {
+    listInstalled: (instanceId: string) => Promise<{ files: string[], map: Record<string, string> }>;
+    removeMod: (instanceId: string, fileName: string, projectKey?: string) => Promise<boolean>;
+  };
   game: {
-    launch: (versionId: string) => Promise<void>;
+    launch: (versionId: string, instancePath?: string, loader?: string) => Promise<void>;
     isRunning: () => Promise<boolean>;
+    kill: () => Promise<boolean>;
+    onStatusChange: (cb: (isRunning: boolean) => void) => () => void;
   };
   window: {
     minimize: () => void;

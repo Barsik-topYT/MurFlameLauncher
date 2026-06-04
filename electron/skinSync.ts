@@ -17,6 +17,7 @@ export async function fetchMojangProfile(accessToken: string) {
 export async function applyProfileToAccount(acc: Account, accessToken: string): Promise<Account> {
   const profile = await fetchMojangProfile(accessToken);
   const active = profile.skins?.find((s) => s.state === "ACTIVE") ?? profile.skins?.[0];
+  const activeCape = profile.capes?.find((c) => c.state === "ACTIVE") ?? profile.capes?.[0];
 
   const variant = active?.variant === "SLIM" ? "slim" : "classic";
 
@@ -33,5 +34,6 @@ export async function applyProfileToAccount(acc: Account, accessToken: string): 
     skinTextureUrl: active?.url,
     skinUrl: `${accountSkinUrl({ username: profile.name, uuid })}?t=${ts}`,
     skinHeadUrl: `${mojangHeadUrl(uuid)}?t=${ts}`,
+    capeUrl: activeCape?.url || null,
   };
 }

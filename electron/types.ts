@@ -42,7 +42,7 @@ export const DEFAULT_SETTINGS: LauncherSettings = {
 // Типы для аккаунтов
 export interface Account {
   id: string;
-  type: "microsoft" | "offline";
+  type: "microsoft" | "offline" | "ely";
   username: string;
   uuid: string;
   accessToken?: string;
@@ -140,6 +140,29 @@ export interface ModrinthVersion {
   }[];
 }
 
+export interface CurseForgeProject {
+  id: string;
+  slug: string;
+  title: string;
+  description: string;
+  icon_url: string;
+  downloads: number;
+  followers: number;
+  author?: string;
+  categories?: string[];
+  date_modified?: string;
+  latest_file_id?: string;
+  latest_file_name?: string;
+}
+
+export interface CurseForgeVersion {
+  id: string;
+  name: string;
+  file_id: string;
+  file_name: string;
+  download_url: string;
+}
+
 // Интерфейс API для лаунчера
 export interface MurFlameAPI {
   settings: {
@@ -159,6 +182,7 @@ export interface MurFlameAPI {
     remove: (id: string) => Promise<Account[]>;
     offline: (username: string) => Promise<Account>;
     microsoftLogin: () => Promise<Account>;
+    elyLogin: () => Promise<Account>;
   };
   versions: {
     list: () => Promise<VersionInfo[]>;
@@ -200,6 +224,20 @@ export interface MurFlameAPI {
     ) => Promise<{ hits: ModrinthProject[]; total_hits: number }>;
     installMod: (projectId: string, instanceId: string) => Promise<boolean>;
   };
+  curseforge: {
+    search: (
+      query: string,
+      version?: string,
+      loader?: string,
+      offset?: number,
+      limit?: number
+    ) => Promise<{ hits: CurseForgeProject[]; total_hits: number }>;
+    installMod: (projectId: string, fileId: string, instanceId: string) => Promise<boolean>;
+  };
+  mods: {
+    listInstalled: (instanceId: string) => Promise<string[]>;
+    removeMod: (instanceId: string, fileName: string) => Promise<boolean>;
+  };
   game: {
     launch: (versionId: string, instancePath?: string, loader?: string) => Promise<void>;
     isRunning: () => Promise<boolean>;
@@ -235,4 +273,26 @@ export interface MurFlameAPI {
     ) => Promise<ModLoaderInstallResult>;
   };
   onLaunchProgress: (cb: (p: LaunchProgress) => void) => () => void;
+}
+
+export interface SkinInfo {
+  url: string;
+  model: "classic" | "slim" | "steve" | "alex";
+  hash?: string;
+}
+
+export interface CapeInfo {
+  url: string;
+  hash?: string;
+}
+
+export interface ElyProfile {
+  id: string;
+  username: string;
+  email?: string;
+  skin?: SkinInfo;
+  cape?: CapeInfo;
+  accessToken: string;
+  refreshToken?: string;
+  expiresAt?: number;
 }

@@ -124,7 +124,7 @@ export function HomePage() {
           <h2 className="instances-title">Экземпляры</h2>
           <p className="instances-subtitle">
             {instances.length > 0
-              ? `${instances.length} установок — как в Prism Launcher`
+              ? `${instances.length} установок`
               : "Создайте экземпляр или установите Forge/Fabric во вкладке «Версии»"}
           </p>
         </div>
