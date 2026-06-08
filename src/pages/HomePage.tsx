@@ -6,6 +6,7 @@ import {
   Pencil,
   Trash2,
   Package,
+  XCircle,
 } from "lucide-react";
 import { useLauncherStore } from "../store/useLauncherStore";
 import { InstanceIconView } from "../components/InstanceIconView";
@@ -36,10 +37,34 @@ export function HomePage() {
   const [launching, setLaunching] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [editInstance, setEditInstance] = useState<GameInstance | null>(null);
+  const [isGameRunning, setIsGameRunning] = useState(false);
 
   useEffect(() => {
     if (window.murflame) void loadInstances();
   }, [loadInstances]);
+  
+  useEffect(() => {
+    if (!window.murflame) return;
+    
+    const checkGameStatus = async () => {
+      const running = await window.murflame.game.isRunning();
+      console.log("[HomePage] Current game status:", running);
+      setIsGameRunning(running);
+    };
+    
+    checkGameStatus();
+    
+    const unsubscribe = window.murflame.game.onStatusChange((running) => {
+      console.log("[HomePage] Game status changed to:", running);
+      setIsGameRunning(running);
+      
+      if (!running && window.murflame) {
+        window.murflame.window.show?.();
+      }
+    });
+    
+    return unsubscribe;
+  }, []);
 
   const selected = useMemo(
     () => instances.find((i) => i.id === selectedInstanceId) ?? instances[0] ?? null,
@@ -53,7 +78,7 @@ export function HomePage() {
   }, [selected, selectedInstanceId, setSelectedInstance]);
 
   const handleLaunch = async (inst: GameInstance) => {
-    if (!activeAccount) {
+    if (!activeAccount && inst.versionId !== "custom") {
       setError("Сначала добавьте аккаунт во вкладке «Аккаунты»");
       return;
     }
@@ -69,6 +94,16 @@ export function HomePage() {
       setTimeout(() => setProgress(null), 3000);
       void loadInstances();
     }
+  };
+
+  const handleKillGame = async () => {
+    console.log("[HomePage] Killing game...");
+    await window.murflame!.game.kill();
+    setTimeout(async () => {
+      const running = await window.murflame!.game.isRunning();
+      console.log("[HomePage] Game is running after kill:", running);
+      setIsGameRunning(running);
+    }, 500);
   };
 
   const handleCreate = async (data: {
@@ -188,12 +223,27 @@ export function HomePage() {
 
             <button
               type="button"
-              className="btn btn-primary btn-launch-instance"
-              onClick={() => handleLaunch(selected)}
-              disabled={launching || !activeAccount}
+              className={`btn ${isGameRunning ? "btn-danger" : "btn-primary"} btn-launch-instance`}
+              onClick={async () => {
+                if (isGameRunning) {
+                  await handleKillGame();
+                } else {
+                  await handleLaunch(selected);
+                }
+              }}
+              disabled={(!activeAccount && !isGameRunning && selected.versionId !== "custom") || launching}
             >
-              <Play size={20} fill="currentColor" />
-              {launching ? "Запуск…" : "Запустить"}
+              {isGameRunning ? (
+                <>
+                  <XCircle size={20} />
+                  Закрыть игру
+                </>
+              ) : (
+                <>
+                  <Play size={20} fill="currentColor" />
+                  {launching ? "Запуск…" : "Запустить"}
+                </>
+              )}
             </button>
 
             <ul className="instance-actions">

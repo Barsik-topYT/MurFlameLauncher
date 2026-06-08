@@ -51,11 +51,10 @@ export function InstanceModal({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim() || !versionId) return;
+    if (!name.trim()) return;
     setSaving(true);
     setInstallProgress({ stage: "init", percent: 0, message: "Подготовка..." });
     
-    // Listen to progress events
     const unsubscribe = (window as any).murflame?.onLaunchProgress((progress: any) => {
       setInstallProgress(progress);
     }) || (() => {});
@@ -63,13 +62,12 @@ export function InstanceModal({
     try {
       await onSave({
         name: name.trim(),
-        versionId,
+        versionId: versionId || "custom",
         icon,
         notes: notes.trim() || undefined,
         loader: selectedLoader,
       });
       
-      // Wait a bit to ensure progress is complete
       await new Promise(resolve => setTimeout(resolve, 500));
       onClose();
     } finally {
@@ -120,9 +118,9 @@ export function InstanceModal({
                   className="select"
                   value={versionId}
                   onChange={(e) => setVersionId(e.target.value)}
-                  required
                   style={{ flex: 1 }}
                 >
+                  {!edit && <option value="custom">-- Кастомная версия (не из списка) --</option>}
                   {installedVersions.map((v) => (
                     <option key={v} value={v}>
                       {v}
@@ -140,8 +138,8 @@ export function InstanceModal({
                   </button>
                 )}
               </div>
-              )}
-            </div>
+            )}
+          </div>
 
           {!edit && (
             <div className="form-group">
@@ -196,7 +194,7 @@ export function InstanceModal({
             <button
               type="submit"
               className="btn btn-primary"
-              disabled={saving || !name.trim() || !versionId}
+              disabled={saving || !name.trim()}
             >
               {saving ? "Создание…" : edit ? "Сохранить" : "Создать"}
             </button>

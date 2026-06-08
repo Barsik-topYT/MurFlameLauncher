@@ -1,21 +1,22 @@
 {
   "name": "murflame-launcher",
-  "version": "03.06.26",
+  "version": "08.06.26",
   "description": "MurFlame — Minecraft Launcher с лицензией и офлайн-режимом",
   "main": "dist-electron/main.js",
   "type": "module",
-  "author": "MurFlame Team",
+  "author": "MurSoftware, inc",
   "license": "MIT",
+  "homepage": ".",
   "scripts": {
     "dev": "vite",
     "build": "npm run build:electron && npm run build:vite",
     "build:electron": "tsc -p electron/tsconfig.json",
     "build:vite": "vite build",
     "build:installer": "node build-installer.cjs",
-    "dist": "npm run build && npm run dist:portable && npm run dist:nsis && npm run build:installer",
+    "dist": "npm run build && npm run dist:portable && npm run dist:nsis",
+    "dist:full": "npm run dist && npm run build:installer",
     "dist:portable": "electron-builder --win portable --x64",
     "dist:nsis": "electron-builder --win nsis --x64",
-    "dist:all": "npm run build && npm run dist:portable && npm run dist:nsis",
     "preview": "vite preview",
     "start": "electron dist-electron/main.js",
     "postinstall": "electron-builder install-app-deps"
@@ -23,7 +24,7 @@
   "build": {
     "appId": "com.murflame.launcher",
     "productName": "MurFlame Launcher",
-    "copyright": "Copyright © 2025 MurFlame Team",
+    "copyright": "Copyright © 2026 MurFlame Team",
     "directories": {
       "output": "release",
       "buildResources": "assets",
@@ -61,9 +62,7 @@
       }
     ],
     "asar": true,
-    "asarUnpack": [
-      "**/*.node"
-    ]
+    "asarUnpack": ["**/*.node"]
   },
   "dependencies": {
     "@types/pngjs": "^6.0.5",
@@ -80,6 +79,7 @@
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "tar": "^7.5.15",
+    "three": "^0.184.0",
     "zustand": "^5.0.2"
   },
   "devDependencies": {
@@ -90,6 +90,7 @@
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@types/tar": "^6.1.13",
+    "@types/three": "^0.184.1",
     "@vitejs/plugin-react": "^4.3.4",
     "concurrently": "^9.1.0",
     "electron": "^33.2.0",

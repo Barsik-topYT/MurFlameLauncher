@@ -1,11 +1,30 @@
 import { useEffect, useState } from "react";
-import { FolderOpen, Coffee } from "lucide-react";
+import { FolderOpen, Coffee, Check, X } from "lucide-react";
 import { useLauncherStore } from "../store/useLauncherStore";
-import type { JavaInfo } from "../types/api";
+import type { JavaInfo, LauncherSettings } from "../types/api";
+
+// Расширяем Window интерфейс для TypeScript
+declare global {
+  interface Window {
+    murflame: {
+      java: {
+        list: () => Promise<JavaInfo[]>;
+      };
+      settings: {
+        pickJava: () => Promise<string>;
+        pickGameDir: () => Promise<string>;
+      };
+    };
+  }
+}
 
 export function SettingsPage() {
   const { settings, updateSettings } = useLauncherStore();
   const [javaList, setJavaList] = useState<JavaInfo[]>([]);
+  
+  // Временные настройки для Apply/Cancel
+  const [tempSettings, setTempSettings] = useState<LauncherSettings | null>(null);
+  const [originalSettings, setOriginalSettings] = useState<LauncherSettings | null>(null);
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
@@ -16,6 +35,15 @@ export function SettingsPage() {
       .catch((e) => console.error("Java list:", e));
   }, []);
 
+  // Загружаем настройки при открытии
+  useEffect(() => {
+    if (settings) {
+      setTempSettings(settings);
+      setOriginalSettings(settings);
+    }
+  }, [settings]);
+
+  // Проверка доступности API
   if (!window.murflame) {
     return (
       <>
@@ -30,7 +58,7 @@ export function SettingsPage() {
     );
   }
 
-  if (!settings) {
+  if (!tempSettings) {
     return (
       <div className="page-header">
         <h2>Настройки</h2>
@@ -39,11 +67,27 @@ export function SettingsPage() {
     );
   }
 
-  const save = async (partial: Parameters<typeof updateSettings>[0]) => {
-    await updateSettings(partial);
+  // Применяем настройки
+  const handleApply = async () => {
+    if (!tempSettings) return;
+    await updateSettings(tempSettings);
+    setOriginalSettings({ ...tempSettings });
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };
+
+  // Отменяем изменения
+  const handleCancel = () => {
+    if (originalSettings) {
+      setTempSettings({ ...originalSettings });
+    }
+  };
+
+  // Проверяем, есть ли изменения
+  const hasChanges = JSON.stringify(tempSettings) !== JSON.stringify(originalSettings);
+
+  // Пасхалка — проверяем через правильный тип
+  const isEasterEgg = (tempSettings as LauncherSettings & { easterEgg?: boolean }).easterEgg === true;
 
   const memMin = 512;
   const memMax = 16384;
@@ -52,15 +96,16 @@ export function SettingsPage() {
   return (
     <>
       <div className="page-header">
-        <h2>Настройки</h2>
+        <h2>{isEasterEgg ? "БАРСФЕЙС" : "Настройки"}</h2>
         <p>Память, Java, тема интерфейса и папка игры</p>
       </div>
 
       {saved && (
-        <div className="alert alert-success">Настройки сохранены</div>
+        <div className="alert alert-success">Настройки применены!</div>
       )}
 
       <div className="settings-grid">
+        {/* Интерфейс */}
         <div className="settings-section">
           <h3>Интерфейс</h3>
         </div>
@@ -73,8 +118,8 @@ export function SettingsPage() {
                 <button
                   key={t}
                   type="button"
-                  className={`theme-option ${settings.theme === t ? "active" : ""}`}
-                  onClick={() => save({ theme: t })}
+                  className={`theme-option ${tempSettings.theme === t ? "active" : ""}`}
+                  onClick={() => setTempSettings({ ...tempSettings, theme: t })}
                 >
                   {t === "murflame" ? "MurFlame" : t === "dark" ? "Тёмная" : "Светлая"}
                 </button>
@@ -88,11 +133,11 @@ export function SettingsPage() {
               <input
                 type="color"
                 className="color-input"
-                value={settings.accentColor}
-                onChange={(e) => save({ accentColor: e.target.value })}
+                value={tempSettings.accentColor}
+                onChange={(e) => setTempSettings({ ...tempSettings, accentColor: e.target.value })}
               />
               <span style={{ color: "var(--text-secondary)", fontSize: 13 }}>
-                {settings.accentColor}
+                {tempSettings.accentColor}
               </span>
             </div>
           </div>
@@ -105,13 +150,13 @@ export function SettingsPage() {
                 min={0.5}
                 max={1}
                 step={0.05}
-                value={settings.backgroundOpacity}
+                value={tempSettings.backgroundOpacity}
                 onChange={(e) =>
-                  save({ backgroundOpacity: parseFloat(e.target.value) })
+                  setTempSettings({ ...tempSettings, backgroundOpacity: parseFloat(e.target.value) })
                 }
               />
               <span className="range-value">
-                {Math.round(settings.backgroundOpacity * 100)}%
+                {Math.round(tempSettings.backgroundOpacity * 100)}%
               </span>
             </div>
           </div>
@@ -119,13 +164,14 @@ export function SettingsPage() {
           <label className="toggle">
             <input
               type="checkbox"
-              checked={settings.sidebarCompact}
-              onChange={(e) => save({ sidebarCompact: e.target.checked })}
+              checked={tempSettings.sidebarCompact}
+              onChange={(e) => setTempSettings({ ...tempSettings, sidebarCompact: e.target.checked })}
             />
             <span>Компактная боковая панель</span>
           </label>
         </div>
 
+        {/* Память */}
         <div className="settings-section">
           <h3>Память (RAM)</h3>
         </div>
@@ -139,12 +185,12 @@ export function SettingsPage() {
                 min={memMin}
                 max={memMax}
                 step={step}
-                value={settings.maxMemory}
+                value={tempSettings.maxMemory}
                 onChange={(e) =>
-                  save({ maxMemory: parseInt(e.target.value, 10) })
+                  setTempSettings({ ...tempSettings, maxMemory: parseInt(e.target.value, 10) })
                 }
               />
-              <span className="range-value">{settings.maxMemory} МБ</span>
+              <span className="range-value">{tempSettings.maxMemory} МБ</span>
             </div>
           </div>
 
@@ -156,12 +202,12 @@ export function SettingsPage() {
                 min={256}
                 max={4096}
                 step={128}
-                value={settings.minMemory}
+                value={tempSettings.minMemory}
                 onChange={(e) =>
-                  save({ minMemory: parseInt(e.target.value, 10) })
+                  setTempSettings({ ...tempSettings, minMemory: parseInt(e.target.value, 10) })
                 }
               />
-              <span className="range-value">{settings.minMemory} МБ</span>
+              <span className="range-value">{tempSettings.minMemory} МБ</span>
             </div>
           </div>
 
@@ -170,12 +216,13 @@ export function SettingsPage() {
             <input
               className="input"
               placeholder="-XX:+UseG1GC -Dfml.ignoreInvalidMinecraftCertificates=true"
-              value={settings.customJvmArgs}
-              onChange={(e) => save({ customJvmArgs: e.target.value })}
+              value={tempSettings.customJvmArgs}
+              onChange={(e) => setTempSettings({ ...tempSettings, customJvmArgs: e.target.value })}
             />
           </div>
         </div>
 
+        {/* Java и папки */}
         <div className="settings-section">
           <h3>Java и папки</h3>
         </div>
@@ -186,8 +233,8 @@ export function SettingsPage() {
             <div className="input-row">
               <select
                 className="select"
-                value={settings.javaPath}
-                onChange={(e) => save({ javaPath: e.target.value })}
+                value={tempSettings.javaPath}
+                onChange={(e) => setTempSettings({ ...tempSettings, javaPath: e.target.value })}
               >
                 <option value="">Авто (java из PATH)</option>
                 {javaList.map((j) => (
@@ -201,40 +248,24 @@ export function SettingsPage() {
                 className="btn btn-secondary"
                 onClick={async () => {
                   const p = await window.murflame?.settings.pickJava();
-                  if (p) save({ javaPath: p });
+                  if (p) setTempSettings({ ...tempSettings, javaPath: p });
                 }}
               >
                 <Coffee size={16} />
               </button>
             </div>
-            <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 8 }}>
-              Minecraft 1.16.5 и Forge требуют <strong>Java 8</strong> (javaw.exe). Java 17/21 для
-              них не подходит — установите{" "}
-              <a
-                href="#"
-                onClick={(e) => {
-                  e.preventDefault();
-                  window.murflame?.shell.open(
-                    "https://adoptium.net/temurin/releases/?version=8"
-                  );
-                }}
-              >
-                Eclipse Temurin 8
-              </a>{" "}
-              и выберите здесь.
-            </p>
           </div>
 
           <div className="form-group">
             <label>Папка игры (.minecraft)</label>
             <div className="input-row">
-              <input className="input" value={settings.gameDir} readOnly />
+              <input className="input" value={tempSettings.gameDir} readOnly />
               <button
                 type="button"
                 className="btn btn-secondary"
                 onClick={async () => {
                   const p = await window.murflame?.settings.pickGameDir();
-                  if (p) save({ gameDir: p });
+                  if (p) setTempSettings({ ...tempSettings, gameDir: p });
                 }}
               >
                 <FolderOpen size={16} />
@@ -243,6 +274,7 @@ export function SettingsPage() {
           </div>
         </div>
 
+        {/* Поведение */}
         <div className="settings-section">
           <h3>Поведение</h3>
         </div>
@@ -251,22 +283,31 @@ export function SettingsPage() {
           <label className="toggle" style={{ marginBottom: 12 }}>
             <input
               type="checkbox"
-              checked={settings.closeOnLaunch}
-              onChange={(e) => save({ closeOnLaunch: e.target.checked })}
+              checked={tempSettings.closeOnLaunch}
+              onChange={(e) => setTempSettings({ ...tempSettings, closeOnLaunch: e.target.checked })}
             />
             <span>Сворачивать лаунчер при запуске игры</span>
+          </label>
+
+          <label className="toggle" style={{ marginBottom: 12 }}>
+            <input
+              type="checkbox"
+              checked={tempSettings.closeToTray}
+              onChange={(e) => setTempSettings({ ...tempSettings, closeToTray: e.target.checked })}
+            />
+            <span>Сворачивать в трей при закрытии</span>
           </label>
 
           <div className="form-group" style={{ marginTop: 12 }}>
             <label>Какие версии показывать в списке</label>
             <select
               className="select"
-              value={settings.versionFilter ?? "all"}
+              value={tempSettings.versionFilter ?? "all"}
               onChange={(e) =>
-                save({
-                  versionFilter: e.target
-                    .value as typeof settings.versionFilter,
-                }).then(() => useLauncherStore.getState().loadVersions())
+                setTempSettings({
+                  ...tempSettings,
+                  versionFilter: e.target.value as typeof tempSettings.versionFilter,
+                })
               }
             >
               <option value="all">Все (релизы, снапшоты, alpha, beta)</option>
@@ -278,8 +319,30 @@ export function SettingsPage() {
           </div>
         </div>
 
+        {/* Кнопки Apply/Cancel */}
+        <div className="settings-actions" style={{ marginTop: 24, display: "flex", gap: 12, justifyContent: "flex-end" }}>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={handleCancel}
+            disabled={!hasChanges}
+          >
+            <X size={16} />
+            Отмена
+          </button>
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={handleApply}
+            disabled={!hasChanges}
+          >
+            <Check size={16} />
+            Применить
+          </button>
+        </div>
+
         <div style={{ marginTop: 32, textAlign: "center", color: "var(--text-muted)", fontSize: 14 }}>
-          <p>Версия приложения 04.06.26</p>
+          <p>Версия приложения 08.06.26</p>
           <p>Создатели: Barsik_topYT, K0maruTrende</p>
         </div>
       </div>

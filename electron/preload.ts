@@ -41,14 +41,19 @@ const api = {
     elyLogin: (): Promise<Account> =>
       ipcRenderer.invoke("accounts:elyLogin"),
   },
-  versions: {
-    list: (): Promise<VersionInfo[]> => ipcRenderer.invoke("versions:list"),
-    install: (id: string): Promise<void> =>
-      ipcRenderer.invoke("versions:install", id),
-    delete: (id: string): Promise<void> =>
-      ipcRenderer.invoke("versions:delete", id),
-    last: (): Promise<string> => ipcRenderer.invoke("versions:last"),
+versions: {
+  list: () => ipcRenderer.invoke("versions:list"),
+  install: (id: string) => ipcRenderer.invoke("versions:install", id),
+  delete: (id: string) => ipcRenderer.invoke("versions:delete", id),
+  last: () => ipcRenderer.invoke("versions:last"),
+  installUnofficial: (id: string, downloadUrl: string) => 
+    ipcRenderer.invoke("versions:installUnofficial", id, downloadUrl),
+  onUpdated: (cb: () => void) => {
+    const handler = () => cb();
+    ipcRenderer.on("versions:updated", handler);
+    return () => ipcRenderer.removeListener("versions:updated", handler);
   },
+},
   game: {
     launch: (versionId: string, instancePath?: string, loader?: string): Promise<void> =>
       ipcRenderer.invoke("game:launch", versionId, instancePath, loader),
@@ -64,7 +69,12 @@ const api = {
     minimize: () => ipcRenderer.send("window:minimize"),
     maximize: () => ipcRenderer.send("window:maximize"),
     close: () => ipcRenderer.send("window:close"),
+	show: () => ipcRenderer.send("window:show"),
   },
+updater: {
+  check: () => ipcRenderer.invoke("updater:check"),
+  getVersion: () => ipcRenderer.invoke("updater:getVersion"),
+},
   shell: {
     open: (url: string) => ipcRenderer.invoke("shell:open", url),
   },
@@ -79,6 +89,7 @@ const api = {
     reset: (accountId: string) => ipcRenderer.invoke("skin:reset", accountId),
     sync: (accountId: string) => ipcRenderer.invoke("skin:sync", accountId),
     previewHead: (filePath: string) => ipcRenderer.invoke("skin:previewHead", filePath),
+	previewCape: (capeUrl: string) => ipcRenderer.invoke("skin:previewCape", capeUrl),
     getCapes: (accountId: string) => ipcRenderer.invoke("skin:getCapes", accountId),
     applyCape: (accountId: string, filePath: string) =>
       ipcRenderer.invoke("skin:applyCape", accountId, filePath),

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { RotateCcw, RefreshCw, Check, ExternalLink, Upload } from "lucide-react";
 import { useLauncherStore } from "../store/useLauncherStore";
 import { SkinAvatar } from "../components/SkinAvatar";
+import { Cape3DViewer } from "../components/Cape3DViewer";
 
 // Компонент управления плащом
 function CapeManager({ account, onUpdate }: { account: any; onUpdate: () => void }) {
@@ -10,10 +11,15 @@ function CapeManager({ account, onUpdate }: { account: any; onUpdate: () => void
   const [currentCapeId, setCurrentCapeId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [selectedCapeUrl, setSelectedCapeUrl] = useState<string | null>(account.capeUrl || null);
 
   useEffect(() => {
     loadCapes();
   }, [account.id]);
+
+  useEffect(() => {
+    setSelectedCapeUrl(account.capeUrl || null);
+  }, [account.capeUrl]);
 
   const loadCapes = async () => {
     if (!window.murflame) return;
@@ -37,6 +43,7 @@ function CapeManager({ account, onUpdate }: { account: any; onUpdate: () => void
     try {
       await window.murflame.skin.resetCape?.(account.id);
       setSuccess("Плащ сброшен!");
+      setSelectedCapeUrl(null);
       onUpdate();
       await loadCapes();
     } catch (e) {
@@ -46,13 +53,14 @@ function CapeManager({ account, onUpdate }: { account: any; onUpdate: () => void
     }
   };
 
-  const handleSelectCape = async (capeId: string) => {
+  const handleSelectCape = async (capeId: string, capeUrl: string) => {
     if (!window.murflame) return;
     setLoading(true);
     setError(null);
     try {
       await window.murflame.skin.setOfficialCape?.(account.id, capeId);
       setSuccess("Плащ установлен!");
+      setSelectedCapeUrl(capeUrl);
       onUpdate();
       await loadCapes();
     } catch (e) {
@@ -66,13 +74,17 @@ function CapeManager({ account, onUpdate }: { account: any; onUpdate: () => void
     <div className="cape-manager">
       {error && <div className="alert alert-error">{error}</div>}
       {success && <div className="alert alert-success">{success}</div>}
-
+	  
       {/* Текущий плащ */}
       <div className="card">
         <h3>Текущий плащ</h3>
         <div className="current-cape">
           {account.capeUrl ? (
-            <img src={account.capeUrl} alt="Current cape" className="cape-preview" />
+            <img 
+              src={account.capeUrl} 
+              alt="Current cape" 
+              className="cape-preview"
+            />
           ) : (
             <div className="cape-placeholder">Нет плаща</div>
           )}
@@ -98,8 +110,9 @@ function CapeManager({ account, onUpdate }: { account: any; onUpdate: () => void
               <button
                 key={cape.id}
                 className={`cape-card ${cape.current ? "current" : ""}`}
-                onClick={() => handleSelectCape(cape.id)}
+                onClick={() => handleSelectCape(cape.id, cape.url)}
                 disabled={loading || cape.current}
+                title="Клик — установить плащ"
               >
                 <img src={cape.url} alt={cape.name} className="cape-thumbnail" />
                 <div className="cape-info">
@@ -112,6 +125,118 @@ function CapeManager({ account, onUpdate }: { account: any; onUpdate: () => void
           </div>
         </div>
       )}
+
+      <style>{`
+        .cape-manager {
+          display: flex;
+          flex-direction: column;
+          gap: 20px;
+        }
+        
+        .current-cape {
+          display: flex;
+          align-items: center;
+          gap: 24px;
+          flex-wrap: wrap;
+        }
+        
+        .cape-preview {
+          width: 200px;
+          height: auto;
+          image-rendering: pixelated;
+          background: var(--bg-secondary);
+          border-radius: 8px;
+          transition: transform 0.2s;
+        }
+        
+        .cape-preview:hover {
+          transform: scale(1.02);
+        }
+        
+        .cape-placeholder {
+          width: 200px;
+          height: 80px;
+          background: var(--bg-secondary);
+          border-radius: 8px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: var(--text-muted);
+        }
+        
+        .cape-actions {
+          display: flex;
+          gap: 8px;
+        }
+        
+        .capes-grid {
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+          margin-top: 16px;
+          max-height: 300px;
+          overflow-y: auto;
+          padding-right: 8px;
+        }
+        
+        .cape-card {
+          display: flex;
+          align-items: center;
+          gap: 16px;
+          padding: 12px;
+          background: var(--bg-secondary);
+          border-radius: 8px;
+          cursor: pointer;
+          transition: all 0.2s;
+          text-align: left;
+          width: 100%;
+        }
+        
+        .cape-card:hover:not(:disabled) {
+          background: var(--bg-hover);
+          transform: translateX(4px);
+        }
+        
+        .cape-card.current {
+          border-left: 3px solid #f59e0b;
+          background: rgba(245, 158, 11, 0.1);
+          cursor: default;
+        }
+        
+        .cape-card.current:hover {
+          transform: none;
+        }
+        
+        .cape-thumbnail {
+          width: 48px;
+          height: 32px;
+          image-rendering: pixelated;
+          border-radius: 4px;
+        }
+        
+        .cape-info {
+          flex: 1;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+        }
+        
+        .cape-name {
+          font-weight: 600;
+        }
+        
+        .current-badge {
+          font-size: 11px;
+          color: #f59e0b;
+          background: rgba(245, 158, 11, 0.2);
+          padding: 2px 8px;
+          border-radius: 4px;
+        }
+        
+        .check-icon {
+          color: #10b981;
+        }
+      `}</style>
     </div>
   );
 }
@@ -288,13 +413,13 @@ export function SkinsPage() {
           className={`tab ${activeTab === "skin" ? "active" : ""}`}
           onClick={() => setActiveTab("skin")}
         >
-          🎨 Скин
+          Скин
         </button>
         <button
           className={`tab ${activeTab === "cape" ? "active" : ""}`}
           onClick={() => setActiveTab("cape")}
         >
-          🧥 Плащ
+          Плащ
         </button>
       </div>
 
@@ -312,7 +437,7 @@ export function SkinsPage() {
                 style={{ imageRendering: "pixelated" }}
               />
             ) : (
-              <SkinAvatar account={activeAccount} size={96} className="account-avatar" />
+              <SkinAvatar account={activeAccount} size={96} className="account-avatar" showCapePreview={true} />
             )}
             <p style={{ color: "var(--text-muted)", fontSize: 13, marginTop: 12 }}>
               {previewHead ? "Предпросмотр (голова)" : "Текущий скин"}
@@ -461,109 +586,6 @@ export function SkinsPage() {
         .text-muted {
           color: var(--text-muted);
           font-size: 12px;
-        }
-        
-        .cape-manager {
-          display: flex;
-          flex-direction: column;
-          gap: 20px;
-        }
-        
-        .current-cape {
-          display: flex;
-          align-items: center;
-          gap: 24px;
-          flex-wrap: wrap;
-        }
-        
-        .cape-preview {
-          width: 200px;
-          height: auto;
-          image-rendering: pixelated;
-          background: var(--bg-secondary);
-          border-radius: 8px;
-        }
-        
-        .cape-placeholder {
-          width: 200px;
-          height: 80px;
-          background: var(--bg-secondary);
-          border-radius: 8px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          color: var(--text-muted);
-        }
-        
-        .cape-thumbnail {
-          width: 48px;
-          height: 32px;
-          image-rendering: pixelated;
-        }
-        
-        .cape-actions {
-          display: flex;
-          gap: 8px;
-        }
-        
-
-        
-        .capes-grid {
-          display: flex;
-          flex-direction: column;
-          gap: 12px;
-          margin-top: 16px;
-        }
-        
-        .cape-card {
-          display: flex;
-          align-items: center;
-          gap: 16px;
-          padding: 12px;
-          background: var(--bg-secondary);
-          border-radius: 8px;
-          cursor: pointer;
-          transition: all 0.2s;
-          text-align: left;
-          width: 100%;
-        }
-        
-        .cape-card:hover:not(:disabled) {
-          background: var(--bg-hover);
-          transform: translateX(4px);
-        }
-        
-        .cape-card.current {
-          border-left: 3px solid #f59e0b;
-          background: rgba(245, 158, 11, 0.1);
-          cursor: default;
-        }
-        
-        .cape-card.current:hover {
-          transform: none;
-        }
-        
-        .cape-info {
-          flex: 1;
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-        }
-        
-        .cape-name {
-          font-weight: 600;
-        }
-        
-        .current-badge {
-          font-size: 11px;
-          color: #f59e0b;
-          background: rgba(245, 158, 11, 0.2);
-          padding: 2px 8px;
-          border-radius: 4px;
-        }
-        
-        .check-icon {
-          color: #10b981;
         }
       `}</style>
     </>

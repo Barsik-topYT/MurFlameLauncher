@@ -59,7 +59,7 @@ export interface Account {
 // Типы для версий
 export interface VersionInfo {
   id: string;
-  type: string;
+  type: string; // "release", "snapshot", "old_beta", "old_alpha", "installed", "forge", "fabric" и т.д.
   installed: boolean;
 }
 

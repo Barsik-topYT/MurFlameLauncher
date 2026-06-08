@@ -13,6 +13,10 @@ import { fileURLToPath } from "url";
 import fs from "fs/promises";
 import { existsSync } from "fs";
 import { spawn, execSync } from "child_process";
+import http from 'http';
+import { randomUUID } from "crypto";
+import { sanitizeFolderName } from "./instances.js";
+import { checkForUpdates, getCurrentVersion } from "./updater.js";
 
 // Fix console encoding for Windows
 if (process.platform === "win32") {
@@ -89,7 +93,7 @@ function getIconPath(): string {
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // CurseForge API Key
-const CURSEFORGE_API_KEY = "$2a$10$gMQT9tYeQt.cfI25zNSexeCAAn99GM9l8qnU1ez4dqLFmPFPxEOoC";
+const CURSEFORGE_API_KEY = "$2a$10$80WXoHatSk8G1n81EdPZXOJqrxZPlmMLupzvtIgx5YDrBjVcZebsm";
 
 // Кэш для часто используемых данных
 const manifestCache: Map<string, any> = new Map();
@@ -104,6 +108,17 @@ globalThis.__launcherSettings = {
   minMemory: 512,
   maxMemory: 4096
 };
+
+process.on("message", (message: any) => {
+  if (message?.type === "game-closed") {
+    if (mainWindow && !mainWindow.isVisible()) {
+      mainWindow.show();
+    }
+  }
+  if (message?.type === "game-status") {
+    send("game:status", message.isRunning);
+  }
+});
 
 const store = new Store<{
   settings: LauncherSettings;
@@ -147,6 +162,18 @@ function resolveSettings(): LauncherSettings {
   };
   
   return s;
+}
+
+async function createStartBat(instancePath: string, versionId: string) {
+  const batContent = `@echo off
+cd /d "${instancePath}"
+".murflame\\java\\java8\\win32\\x64\\bin\\java.exe" -Xmx1024M -Xms1024M -cp Minecraft.jar -Dorg.lwjgl.librarypath="%CD%/natives" -Dnet.java.games.input.librarypath="%CD%/natives" Start
+pause`;
+  
+  const batPath = path.join(instancePath, "start.bat");
+  await fs.writeFile(batPath, batContent, { encoding: 'utf-8' });
+  console.log("[MurFlame] Created start.bat at:", batPath);
+  return batPath;
 }
 
 async function ensureDir(dir: string) {
@@ -236,7 +263,7 @@ function createWindow() {
     height: settings.windowHeight,
     minWidth: 960,
     minHeight: 600,
-    frame: false,
+    frame: false, 
     transparent: false,
     backgroundColor: "#0d0d12",
     show: false,
@@ -266,6 +293,10 @@ function createWindow() {
   mainWindow.once('ready-to-show', () => {
     mainWindow?.show();
   });
+  
+setTimeout(() => {
+  checkForUpdates(mainWindow!);
+}, 3000);
 
   if (isDev && devServerUrl) {
     mainWindow.loadURL(devServerUrl);
@@ -393,24 +424,46 @@ async function getVersions(): Promise<VersionInfo[]> {
   const versionsDir = path.join(settings.gameDir, "versions");
   const filter = resolveVersionFilter(settings);
 
-  const fromManifest = manifest.versions
-    .filter((v) => filter === "all" || v.type === filter)
-    .map((v) => ({
-      id: v.id,
-      type: v.type,
-      installed: existsSync(path.join(versionsDir, v.id, `${v.id}.json`)),
-    }));
+  // Получаем установленные версии из папки
+  let installedVersions = listInstalledVersionIds(settings.gameDir).map((id) => ({
+    id,
+    type: detectLoader(id) === "vanilla" ? "installed" : detectLoader(id),
+    installed: true,
+  }));
+
+  const alphaVersionId = "alpha-1.2.3_03-remastered";
+  const alphaVersionDir = path.join(settings.gameDir, "versions", alphaVersionId);
+  const alphaJsonPath = path.join(alphaVersionDir, `${alphaVersionId}.json`);
+  
+  if (existsSync(alphaJsonPath) && !installedVersions.some(v => v.id === alphaVersionId)) {
+    installedVersions.push({
+      id: alphaVersionId,
+      type: "unofficial",
+      installed: true,
+    });
+    console.log("[MurFlame] Added unofficial alpha version to list");
+  }
+
+  // Получаем доступные версии из манифеста с учётом фильтра
+  let availableVersions = manifest.versions;
+  
+  // Фильтруем по типу (release, snapshot, old_beta, old_alpha)
+  if (filter !== "all") {
+    availableVersions = availableVersions.filter((v) => v.type === filter);
+  }
+  
+  const fromManifest = availableVersions.map((v) => ({
+    id: v.id,
+    type: v.type,
+    installed: existsSync(path.join(versionsDir, v.id, `${v.id}.json`)),
+  }));
 
   const manifestIds = new Set(fromManifest.map((v) => v.id));
-  const installedExtra = listInstalledVersionIds(settings.gameDir)
-    .filter((id) => !manifestIds.has(id))
-    .map((id) => ({
-      id,
-      type: detectLoader(id) === "vanilla" ? "custom" : detectLoader(id),
-      installed: true,
-    }));
-
-  return [...installedExtra, ...fromManifest];
+  const extraInstalled = installedVersions.filter((v) => !manifestIds.has(v.id));
+  
+  const allVersions = [...extraInstalled, ...fromManifest];
+  
+  return allVersions.sort((a, b) => b.id.localeCompare(a.id));
 }
 
 function getInstances(): GameInstance[] {
@@ -906,7 +959,61 @@ async function launchGame(versionId: string, instancePath: string, loader?: stri
 }
 
 function registerIpc() {
-  ipcMain.handle("settings:get", () => resolveSettings());
+  ipcMain.handle("settings:get", () => {
+    const settings = resolveSettings();
+  
+  // Пасхалка: 1% шанс на "Барсфейс"
+    const random = Math.random();
+    if (random < 0.01) {
+    return { ...settings, easterEgg: true };
+    }
+   return settings;
+  });
+  
+ipcMain.handle("updater:check", async () => {
+  if (mainWindow) {
+    await checkForUpdates(mainWindow);
+  }
+});
+
+ipcMain.on('window:minimize', () => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.minimize();
+  }
+});
+
+ipcMain.on('window:maximize', () => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    if (mainWindow.isMaximized()) {
+      mainWindow.unmaximize();
+    } else {
+      mainWindow.maximize();
+    }
+  }
+});
+
+ipcMain.on('window:close', () => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    const settings = resolveSettings();
+    if (settings.closeToTray) {
+      mainWindow.hide();
+    } else {
+      mainWindow.close();
+    }
+  }
+});
+
+ipcMain.on('window:show', () => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.show();
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.focus();
+  }
+});
+
+ipcMain.handle("updater:getVersion", () => {
+  return getCurrentVersion();
+});
   
   ipcMain.handle("settings:set", (_e, partial: Partial<LauncherSettings>) => {
     const current = resolveSettings();
@@ -1040,117 +1147,186 @@ function registerIpc() {
   ipcMain.handle("accounts:microsoftLogin", () => microsoftLoginInteractive());
   ipcMain.handle("accounts:microsoft", (_e, code: string) => microsoftLoginWithCode(code));
   
-  // ========== ОБРАБОТЧИК ELY.BY (ТОЛЬКО ОДИН РАЗ!) ==========
-  ipcMain.handle("accounts:elyLogin", async () => {
-    return new Promise(async (resolve, reject) => {
-      const authUrl = await elyGetAuthUrl();
-      
-      const authWindow = new BrowserWindow({
-        width: 520,
-        height: 720,
-        parent: mainWindow ?? undefined,
-        modal: Boolean(mainWindow),
-        title: "Вход в ely.by",
-        autoHideMenuBar: true,
-        webPreferences: {
-          nodeIntegration: false,
-          contextIsolation: true,
-        },
-      });
-      
-      let finished = false;
-      
-      const finish = (fn: () => void) => {
-        if (finished) return;
-        finished = true;
-        fn();
-      };
-      
-      const handleNavigation = async (url: string) => {
-        console.log("[MurFlame] Navigation to:", url);
+  // ========== ОБРАБОТЧИК ELY.BY  ==========
+ipcMain.handle("accounts:elyLogin", async () => {
+  return new Promise(async (resolve, reject) => {
+    // 1. Запускаем локальный сервер для перехвата кода
+    const server = http.createServer();
+    const port = 23423;
+    let resolved = false;
+
+    server.listen(port, '127.0.0.1', () => {
+      console.log(`[MurFlame] OAuth callback server listening on port ${port}`);
+    });
+
+    server.on('request', async (req, res) => {
+      const url = new URL(req.url || '', `http://localhost:${port}`);
+      const code = url.searchParams.get('code');
+      const error = url.searchParams.get('error');
+
+      if (code && !resolved) {
+        resolved = true;
+        res.writeHead(200, { 'Content-Type': 'text/html' });
+        res.end('<html><body><h1>Успешный вход!</h1><p>Можете закрыть это окно.</p></body></html>');
         
-        if (url.startsWith("murflame://auth")) {
-          try {
-            const parsed = new URL(url);
-            const code = parsed.searchParams.get("code");
-            const error = parsed.searchParams.get("error");
-            
-            if (error) {
-              finish(() => {
-                authWindow.close();
-                reject(new Error(decodeURIComponent(error)));
-              });
-              return;
-            }
-            
-            if (code) {
-              finish(async () => {
-                authWindow.close();
-                try {
-                  const profile = await elyExchangeCode(code);
-                  const account: Account = {
-                    id: profile.id,
-                    type: "ely",
-                    username: profile.username,
-                    uuid: profile.id,
-                    accessToken: profile.accessToken,
-                    refreshToken: profile.refreshToken,
-                    expiresAt: profile.expiresAt,
-                    skinUrl: await elyGetSkinUrl(profile.id),
-                    capeUrl: await elyGetCapeUrl(profile.id),
-                  };
-                  
-                  let accounts = store.get("accounts") as Account[];
-                  const activeAccountId = store.get("activeAccountId") as string | null;
-                  const activeAccount = activeAccountId ? accounts.find(a => a.id === activeAccountId) : null;
-                  
-                  if (activeAccount && activeAccount.type === "offline") {
-                    accounts = accounts.map(a => a.id === activeAccountId ? account : a);
-                    store.set("accounts", accounts);
-                    resolve(account);
-                  } else {
-                    resolve(saveAccount(account));
-                  }
-                } catch (e) {
-                  reject(e);
-                }
-              });
-            }
-          } catch (e) {
-            console.error("[MurFlame] Error parsing URL:", e);
+        // Закрываем сервер и окно браузера
+        server.close();
+        authWindow.close();
+        
+        try {
+          const profile = await elyExchangeCode(code);
+          const account: Account = {
+            id: profile.id,
+            type: "ely",
+            username: profile.username,
+            uuid: profile.id,
+            accessToken: profile.accessToken,
+            refreshToken: profile.refreshToken,
+            expiresAt: profile.expiresAt,
+            skinUrl: await elyGetSkinUrl(profile.id),
+            capeUrl: await elyGetCapeUrl(profile.id),
+          };
+          
+          let accounts = store.get("accounts") as Account[];
+          const activeAccountId = store.get("activeAccountId") as string | null;
+          const activeAccount = activeAccountId ? accounts.find(a => a.id === activeAccountId) : null;
+          
+          if (activeAccount && activeAccount.type === "offline") {
+            accounts = accounts.map(a => a.id === activeAccountId ? account : a);
+            store.set("accounts", accounts);
+            resolve(account);
+          } else {
+            resolve(saveAccount(account));
           }
-        }
-      };
-      
-      authWindow.webContents.on("will-redirect", (_e, url) => {
-        console.log("[MurFlame] will-redirect:", url);
-        handleNavigation(url);
-      });
-      
-      authWindow.webContents.on("did-navigate", (_e, url) => {
-        console.log("[MurFlame] did-navigate:", url);
-        handleNavigation(url);
-      });
-      
-      authWindow.webContents.on("did-navigate-in-page", (_e, url) => {
-        console.log("[MurFlame] did-navigate-in-page:", url);
-        handleNavigation(url);
-      });
-      
-      authWindow.on("closed", () => {
-        finish(() => reject(new Error("Вход отменён")));
-      });
-      
-      authWindow.loadURL(authUrl).catch((e) => {
-        finish(() => {
-          authWindow.close();
+        } catch (e) {
           reject(e);
-        });
-      });
+        }
+      } else if (error && !resolved) {
+        resolved = true;
+        res.writeHead(400, { 'Content-Type': 'text/html' });
+        res.end(`<html><body><h1>Ошибка входа</h1><p>${error}</p></body></html>`);
+        server.close();
+        authWindow.close();
+        reject(new Error(error));
+      } else {
+        res.writeHead(404);
+        res.end();
+      }
+    });
+
+    server.on('error', (err) => {
+      console.error('[MurFlame] OAuth server error:', err);
+      if (!resolved) reject(err);
+    });
+
+    // 2. Открываем окно авторизации
+    const authUrl = await elyGetAuthUrl(port); // нужно передать порт
+    const authWindow = new BrowserWindow({
+      width: 520,
+      height: 720,
+      parent: mainWindow ?? undefined,
+      modal: Boolean(mainWindow),
+      title: "Вход в ely.by",
+      autoHideMenuBar: true,
+      webPreferences: {
+        nodeIntegration: false,
+        contextIsolation: true,
+      },
+    });
+
+    authWindow.on('closed', () => {
+      if (!resolved) {
+        server.close();
+        reject(new Error("Вход отменён"));
+      }
+    });
+
+    authWindow.loadURL(authUrl).catch((e) => {
+      if (!resolved) {
+        server.close();
+        reject(e);
+      }
     });
   });
+});
 
   // ========== ОСТАЛЬНЫЕ ОБРАБОТЧИКИ (game, instances, modrinth, curseforge, mods, skin и т.д.) ==========
+ipcMain.handle("versions:installUnofficial", async (_e, versionId: string, downloadUrl: string) => {
+  const settings = resolveSettings();
+  const versionDir = path.join(settings.gameDir, "versions", versionId);
+  const zipPath = path.join(settings.gameDir, "temp_unofficial.zip");
+  
+  send("launch:progress", { stage: "fetch", percent: 10, message: "Скачивание неофициальной версии..." });
+  await downloadFile(downloadUrl, zipPath);
+  
+  send("launch:progress", { stage: "extract", percent: 50, message: "Распаковка..." });
+  
+  if (existsSync(versionDir)) {
+    await fs.rm(versionDir, { recursive: true, force: true });
+  }
+  await fs.mkdir(versionDir, { recursive: true });
+  
+  const AdmZip = (await import("adm-zip")).default;
+  const zip = new AdmZip(zipPath);
+  zip.extractAllTo(versionDir, true);
+  
+  // Ищем jar файл
+  const files = await fs.readdir(versionDir);
+  let jarFile = files.find(f => f === "Minecraft.jar" || f.endsWith(".jar"));
+  
+  if (!jarFile) {
+    // Ищем в подпапках
+    for (const file of files) {
+      const stat = await fs.stat(path.join(versionDir, file));
+      if (stat.isDirectory()) {
+        const subFiles = await fs.readdir(path.join(versionDir, file));
+        const subJar = subFiles.find(f => f === "Minecraft.jar" || f.endsWith(".jar"));
+        if (subJar) {
+          jarFile = subJar;
+          await fs.rename(path.join(versionDir, file, subJar), path.join(versionDir, subJar));
+          break;
+        }
+      }
+    }
+  }
+  
+  if (!jarFile) {
+    throw new Error("Не найден Minecraft.jar в архиве");
+  }
+  
+  // Переименовываем в Minecraft.jar
+  const targetJar = path.join(versionDir, "Minecraft.jar");
+  if (path.join(versionDir, jarFile) !== targetJar) {
+    await fs.rename(path.join(versionDir, jarFile), targetJar);
+  }
+  
+  // ✅✅✅ СОЗДАЁМ JSON ✅✅✅
+  const versionJsonPath = path.join(versionDir, `${versionId}.json`);
+  const versionJson = {
+    id: versionId,
+    mainClass: "net.minecraft.client.main.Main",
+    minecraftArguments: "--username ${auth_player_name} --version ${version_name} --gameDir ${game_directory} --assetsDir ${assets_root}",
+    libraries: []
+  };
+  await fs.writeFile(versionJsonPath, JSON.stringify(versionJson, null, 2));
+  
+  console.log("[MurFlame] JSON created at:", versionJsonPath);
+  console.log("[MurFlame] JSON exists:", existsSync(versionJsonPath));
+  
+  // Создаём папку для ассетов
+  const assetsIndexDir = path.join(settings.gameDir, "assets", "indexes");
+  const legacyAssetsPath = path.join(assetsIndexDir, "legacy.json");
+  if (!existsSync(legacyAssetsPath)) {
+    await fs.mkdir(assetsIndexDir, { recursive: true });
+    await fs.writeFile(legacyAssetsPath, JSON.stringify({ objects: {} }, null, 2));
+  }
+  
+  await fs.unlink(zipPath);
+  send("launch:progress", { stage: "done", percent: 100, message: "Версия установлена!" });
+  
+  return true;
+});
+
   ipcMain.handle("game:launch", (_e, versionId: string, instancePath: string, loader?: string) => 
     launchGame(versionId, instancePath, loader)
   );
@@ -1165,6 +1341,13 @@ function registerIpc() {
     store.set("selectedInstanceId", id);
     return id;
   });
+  
+ ipcMain.handle("skin:previewCape", async (_e, capeUrl: string) => {
+  // 3D просмотр временно отключён
+  console.log("[MurFlame] Cape preview disabled");
+  // const { showCapePreview } = await import("./capeViewer.js");
+  // await showCapePreview(capeUrl);
+});
   
   ipcMain.handle("instances:installedVersions", () => {
     const settings = resolveSettings();
@@ -1431,32 +1614,92 @@ function registerIpc() {
     return folderPath;
   });
   
-  ipcMain.handle("instances:launch", async (_e, id) => {
-    const inst = findInstance(id);
-    if (!inst) throw new Error("Экземпляр не найден");
-    if (!inst.versionId) throw new Error(`У экземпляра ${id} нет версии`);
-    store.set("selectedInstanceId", id);
-    
-    const settings = resolveSettings();
-    const instancePath = await ensureInstanceFolder(settings.gameDir, inst);
-    
-    return launchGame(inst.versionId, instancePath, inst.loader);
-  });
-
-  ipcMain.on("window:minimize", () => mainWindow?.minimize());
-  ipcMain.on("window:maximize", () => {
-    if (mainWindow?.isMaximized()) mainWindow.unmaximize();
-    else mainWindow?.maximize();
-  });
+ipcMain.handle("instances:launch", async (_e, id) => {
+  const inst = findInstance(id);
+  if (!inst) throw new Error("Экземпляр не найден");
+  if (!inst.versionId) throw new Error(`У экземпляра ${id} нет версии`);
+  store.set("selectedInstanceId", id);
   
-  ipcMain.on("window:close", () => {
-    const settings = resolveSettings();
-    if (settings.closeToTray && tray) {
-      mainWindow?.hide();
-    } else {
-      app.quit();
+  const settings = resolveSettings();
+  const instancePath = await ensureInstanceFolder(settings.gameDir, inst);
+  
+  // Проверяем, является ли версия неофициальной
+  const isUnofficialVersion = inst.versionId === "alpha-1.2.3_03-remastered";
+  
+  if (isUnofficialVersion) {
+    console.log("[MurFlame] Запуск неофициальной версии через start.bat");
+    
+    // Путь к jar файлу в папке версии
+    const versionDir = path.join(settings.gameDir, "versions", inst.versionId);
+    const sourceJar = path.join(versionDir, "Minecraft.jar");
+    const targetJar = path.join(instancePath, "Minecraft.jar");
+    
+    // Копируем jar файл в папку экземпляра
+    if (existsSync(sourceJar) && !existsSync(targetJar)) {
+      await fs.copyFile(sourceJar, targetJar);
     }
-  });
+    
+    if (!existsSync(targetJar)) {
+      throw new Error("Не найден Minecraft.jar для запуска");
+    }
+    
+    // Копируем natives если есть
+    const sourceNatives = path.join(versionDir, "natives");
+    const targetNatives = path.join(instancePath, "natives");
+    if (existsSync(sourceNatives) && !existsSync(targetNatives)) {
+      await fs.cp(sourceNatives, targetNatives, { recursive: true });
+    }
+    
+    // Создаём start.bat с универсальными путями
+const batContent = `@echo off
+title Minecraft Alpha 1.2.3_03 Remastered
+cd /d "${instancePath}"
+set JAVA_HOME=%APPDATA%\\.murflame\\java\\java8\\win32\\x64
+if not exist "%JAVA_HOME%\\bin\\java.exe" (
+    echo Java 8 не найдена! Запустите лаунчер для установки Java.
+    pause
+    exit /b 1
+)
+"%JAVA_HOME%\\bin\\java.exe" -Xmx1024M -Xms1024M -cp "Minecraft.jar" -Dorg.lwjgl.librarypath="%CD%\\natives" -Dnet.java.games.input.librarypath="%CD%\\natives" Start
+if errorlevel 1 (
+    echo Ошибка запуска!
+    pause
+)
+pause`;
+    
+    const batPath = path.join(instancePath, "start.bat");
+    await fs.writeFile(batPath, batContent, { encoding: 'utf-8' });
+    console.log("[MurFlame] Created start.bat at:", batPath);
+    
+    // Запускаем .bat файл
+    const { spawn } = await import("child_process");
+    const batProcess = spawn(batPath, [], {
+      cwd: instancePath,
+      shell: true,
+      detached: true,
+      stdio: ["ignore", "pipe", "pipe"]
+    });
+    
+    batProcess.unref();
+    
+    batProcess.stdout?.on("data", (data) => {
+      console.log(`[Minecraft] ${data.toString()}`);
+    });
+    
+    batProcess.stderr?.on("data", (data) => {
+      console.error(`[Minecraft Error] ${data.toString()}`);
+    });
+    
+    batProcess.on("close", (code) => {
+      console.log(`[MurFlame] Minecraft process exited with code ${code}`);
+    });
+    
+    return;
+  }
+  
+  // Для обычных версий используем стандартный запуск
+  return launchGame(inst.versionId, instancePath, inst.loader);
+});
 
   ipcMain.handle("shell:open", (_e, url: string) => shell.openExternal(url));
   
@@ -1610,74 +1853,80 @@ function registerIpc() {
   });
 
   // Плащи
-  ipcMain.handle("skin:getCapes", async (_e, accountId: string) => {
-    const accounts = store.get("accounts") as Account[];
-    const acc = accounts.find((a: Account) => a.id === accountId);
-    if (!acc) return [];
-    
-    if (acc.type === "ely" && acc.accessToken) {
-      return await elyGetCapesList(acc.accessToken);
+ipcMain.handle("skin:getCapes", async (_e, accountId: string) => {
+  const accounts = store.get("accounts") as Account[];
+  const acc = accounts.find((a: Account) => a.id === accountId);
+  if (!acc) return [];
+  
+  if (acc.type === "ely" && acc.accessToken) {
+    return await elyGetCapesList(acc.accessToken);
+  }
+  
+  if (acc.type === "microsoft" && acc.accessToken) {
+    try {
+      const refreshed = await refreshMicrosoftToken(acc);
+      const mojang = new MojangClient({});
+      const profile = await mojang.getProfile(refreshed.accessToken!);
+      return (profile.capes || []).map((c: any) => ({
+        id: c.id,
+        name: c.alias || "Cape",
+        url: c.url,
+        owned: true,
+        current: c.state === "ACTIVE"
+      }));
+    } catch (e) {
+      console.warn("Failed to get Microsoft capes:", e);
+      return []; // Возвращаем пустой массив, а не ошибку
     }
-    
-    if (acc.type === "microsoft" && acc.accessToken) {
-      try {
-        const refreshed = await refreshMicrosoftToken(acc);
-        const mojang = new MojangClient({});
-        const profile = await mojang.getProfile(refreshed.accessToken!);
-        return (profile.capes || []).map((c: any) => ({
-          id: c.id,
-          name: c.alias || "Cape",
-          url: c.url,
-          owned: true,
-          current: c.state === "ACTIVE"
-        }));
-      } catch (e) {
-        console.error("Failed to get Microsoft capes:", e);
-        return [];
-      }
-    }
-    
-    return [];
-  });
+  }
+  
+  return [];
+});
 
-  ipcMain.handle("skin:setOfficialCape", async (_e, accountId: string, capeId: string) => {
-    const accounts = store.get("accounts") as Account[];
-    const acc = accounts.find((a: Account) => a.id === accountId);
-    if (!acc) throw new Error("Аккаунт не найден");
-    
-    if (acc.type === "ely" && acc.accessToken) {
-      await elyEquipCape(acc.accessToken, capeId);
-      if (acc.uuid) {
-        acc.capeUrl = await elyGetCapeUrl(acc.uuid);
-      }
-      return saveAccount(acc);
+ipcMain.handle("skin:setOfficialCape", async (_e, accountId: string, capeId: string) => {
+  const accounts = store.get("accounts") as Account[];
+  const acc = accounts.find((a: Account) => a.id === accountId);
+  if (!acc) throw new Error("Аккаунт не найден");
+  
+  if (acc.type === "ely" && acc.accessToken) {
+    await elyEquipCape(acc.accessToken, capeId);
+    if (acc.uuid) {
+      acc.capeUrl = await elyGetCapeUrl(acc.uuid);
     }
-    
-    if (acc.type === "microsoft" && acc.accessToken) {
-      try {
-        const refreshed = await refreshMicrosoftToken(acc);
-        const mojang = new MojangClient({}) as any;
-        if (typeof mojang.setCape === "function") {
-          await mojang.setCape(capeId, refreshed.accessToken!);
-        } else if (typeof mojang.equipCape === "function") {
-          await mojang.equipCape(capeId, refreshed.accessToken!);
-        }
-        // Refresh the account
-        const updated = await applyProfileToAccount(
-          { ...acc, accessToken: refreshed.accessToken },
-          refreshed.accessToken!
-        );
-        updated.refreshToken = refreshed.refreshToken ?? acc.refreshToken;
-        updated.expiresAt = refreshed.expiresAt ?? acc.expiresAt;
-        return saveAccount(updated);
-      } catch (e) {
-        console.error("Failed to set Microsoft cape:", e);
-        throw new Error("Не удалось установить плащ");
+    return saveAccount(acc);
+  }
+  
+  if (acc.type === "microsoft" && acc.accessToken) {
+    try {
+      const refreshed = await refreshMicrosoftToken(acc);
+      const mojang = new MojangClient({}) as any;
+      
+      // Пытаемся установить плащ через API Mojang
+      if (typeof mojang.setCape === "function") {
+        await mojang.setCape(capeId, refreshed.accessToken!);
+      } else if (typeof mojang.equipCape === "function") {
+        await mojang.equipCape(capeId, refreshed.accessToken!);
+      } else {
+        // Если API не поддерживает плащи, просто обновляем профиль
+        console.warn("[MurFlame] Cape API not available for Microsoft accounts");
       }
+      
+      const updated = await applyProfileToAccount(
+        { ...acc, accessToken: refreshed.accessToken },
+        refreshed.accessToken!
+      );
+      updated.refreshToken = refreshed.refreshToken ?? acc.refreshToken;
+      updated.expiresAt = refreshed.expiresAt ?? acc.expiresAt;
+      return saveAccount(updated);
+    } catch (e) {
+      console.error("Failed to set Microsoft cape:", e);
+      // Не показываем ошибку пользователю, просто возвращаем аккаунт без изменений
+      return acc;
     }
-    
-    throw new Error("Установка официальных плащей доступна только для ely.by и Microsoft");
-  });
+  }
+  
+  throw new Error("Установка плащей доступна только для ely.by");
+});
 
   ipcMain.handle("skin:resetCape", async (_e, accountId: string) => {
     const accounts = store.get("accounts") as Account[];

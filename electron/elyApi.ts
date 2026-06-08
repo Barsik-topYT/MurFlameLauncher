@@ -24,9 +24,10 @@ export interface ElyCape {
   current?: boolean;
 }
 
-export async function elyGetAuthUrl(): Promise<string> {
+export async function elyGetAuthUrl(port?: number): Promise<string> {
   const state = Math.random().toString(36).substring(2, 15);
-  return `${ELY_AUTH_URL}/authorize?response_type=code&client_id=${ELY_CLIENT_ID}&redirect_uri=murflame://auth&scope=openid%20profile%20email%20offline&state=${state}`;
+  const redirectUri = port ? `http://localhost:${port}/auth` : `http://localhost:24567/auth`;
+  return `${ELY_AUTH_URL}/authorize?response_type=code&client_id=${ELY_CLIENT_ID}&redirect_uri=${redirectUri}&scope=openid%20profile%20email%20offline&state=${state}`;
 }
 
 export async function elyExchangeCode(code: string): Promise<ElyProfile> {
@@ -37,7 +38,7 @@ export async function elyExchangeCode(code: string): Promise<ElyProfile> {
       grant_type: "authorization_code",
       code,
       client_id: ELY_CLIENT_ID,
-      redirect_uri: "murflame://auth"
+      redirect_uri: "http://localhost:24567/auth"
     })
   });
   

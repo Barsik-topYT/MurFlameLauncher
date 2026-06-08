@@ -1,8 +1,8 @@
 ; Inno Setup Script для MurFlame Launcher
 
 #define MyAppName "MurFlame Launcher"
-#define MyAppVersion "03.06.26"
-#define MyAppPublisher "MurFlame"
+#define MyAppVersion "08.06.26"
+#define MyAppPublisher "MurSoftware, inc"
 #define MyAppURL "https://github.com/murflame"
 #define MyAppExeName "MurFlame Launcher.exe"
 
@@ -64,5 +64,5 @@ begin
   WizardForm.WelcomeLabel2.Caption := 'Добро пожаловать в установку MurFlame Launcher!' + #13#10 + 
                                        #13#10 + 
                                        'Этот мастер установит MurFlame Launcher на ваш компьютер.' + #13#10 +
-                                       'Лаунчер автоматически скачает необходимую Java и поддержку модов.';
+                                       'Лаунчер автоматически скачает необходимую Java';
 end;

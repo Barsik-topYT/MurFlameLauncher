@@ -11,6 +11,7 @@ const JAVA_DOWNLOADS = {
       java8: "https://github.com/adoptium/temurin8-binaries/releases/download/jdk8u412-b08/OpenJDK8U-jre_x64_windows_hotspot_8u412b08.zip",
       java17: "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.11%2B9/OpenJDK17U-jre_x64_windows_hotspot_17.0.11_9.zip",
       java21: "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.3%2B9/OpenJDK21U-jre_x64_windows_hotspot_21.0.3_9.zip",
+	  java25: "https://github.com/adoptium/temurin25-binaries/releases/download/jdk-25.0.2%2B10/OpenJDK25U-jdk_x64_windows_hotspot_25.0.2_10.zip",
     },
   },
   darwin: {
@@ -18,6 +19,7 @@ const JAVA_DOWNLOADS = {
       java8: "https://github.com/adoptium/temurin8-binaries/releases/download/jdk8u412-b08/OpenJDK8U-jre_x64_mac_hotspot_8u412b08.tar.gz",
       java17: "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.11%2B9/OpenJDK17U-jre_x64_mac_hotspot_17.0.11_9.tar.gz",
       java21: "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.3%2B9/OpenJDK21U-jre_x64_mac_hotspot_21.0.3_9.tar.gz",
+	  java25: "https://github.com/adoptium/temurin25-binaries/releases/download/jdk-25.0.2%2B10/OpenJDK25U-jdk_x64_mac_hotspot_25.0.2_10.tar.gz",
     },
   },
   linux: {
@@ -25,11 +27,12 @@ const JAVA_DOWNLOADS = {
       java8: "https://github.com/adoptium/temurin8-binaries/releases/download/jdk8u412-b08/OpenJDK8U-jre_x64_linux_hotspot_8u412b08.tar.gz",
       java17: "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.11%2B9/OpenJDK17U-jre_x64_linux_hotspot_17.0.11_9.tar.gz",
       java21: "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.3%2B9/OpenJDK21U-jre_x64_linux_hotspot_21.0.3_9.tar.gz",
+	  java25: "https://github.com/adoptium/temurin25-binaries/releases/download/jdk-25.0.2%2B10/OpenJDK25U-jdk_x64_linux_hotspot_25.0.2_10.tar.gz",
     },
   },
 } as const;
 
-export type JavaVersion = "java8" | "java17" | "java21";
+export type JavaVersion = "java8" | "java17" | "java21" | "java25";
 
 function getPlatformKey(): keyof typeof JAVA_DOWNLOADS {
   if (process.platform === "win32") return "win32";
@@ -247,12 +250,14 @@ export function getRequiredJavaVersion(mcVersion: string): JavaVersion {
   if (needLegacyJava(mcVersion)) return "java8";
   
   const match = mcVersion.match(/^(\d+)\.(\d+)/);
-  if (!match) return "java21";
+  if (!match) return "java25";  // для новых версий без 1.
   
   const major = parseInt(match[1]);
   const minor = parseInt(match[2]);
   const versionNum = major === 1 ? minor : major;
   
-  if (versionNum <= 17) return "java17";
-  return "java21";
+  if (versionNum >= 25) return "java25";
+  if (versionNum >= 20) return "java21";
+  if (versionNum >= 16) return "java17";
+  return "java8";
 }
