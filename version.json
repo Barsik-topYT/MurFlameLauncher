@@ -1,6 +1,6 @@
 {
-  "version": "08.06.26",
-  "releaseDate": "2026-06-08",
-  "downloadUrl": "https://github.com/Barsik-topYT/MurFlameLauncher/releases/download/MurFlame08.06.26/MurFlame_Launcher.exe",
-  "changelog": "Bug fixes, ely.by system testing, unofficial version added, version categorization added: Installed | Available | Unofficial."
+  "version": "15.06.26",
+  "releaseDate": "2026-06-15",
+  "downloadUrl": "https://github.com/Barsik-topYT/MurFlameLauncher/releases/download/MurFlame15.06.26/MurFlame_Launcher.exe",
+  "changelog": "Bug fixes, new feature for adding mod assemblies, new feature for changing language."
 }
