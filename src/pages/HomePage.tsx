@@ -18,8 +18,10 @@ import {
   instanceSubtitle,
   LOADER_LABELS,
 } from "../utils/instanceUtils";
+import { useLocale } from "../hooks/useLocale";
 
 export function HomePage() {
+  const { t } = useLocale();
   const {
     activeAccount,
     instances,
@@ -42,27 +44,27 @@ export function HomePage() {
   useEffect(() => {
     if (window.murflame) void loadInstances();
   }, [loadInstances]);
-  
+
   useEffect(() => {
     if (!window.murflame) return;
-    
+
     const checkGameStatus = async () => {
       const running = await window.murflame.game.isRunning();
       console.log("[HomePage] Current game status:", running);
       setIsGameRunning(running);
     };
-    
+
     checkGameStatus();
-    
+
     const unsubscribe = window.murflame.game.onStatusChange((running) => {
       console.log("[HomePage] Game status changed to:", running);
       setIsGameRunning(running);
-      
+
       if (!running && window.murflame) {
         window.murflame.window.show?.();
       }
     });
-    
+
     return unsubscribe;
   }, []);
 
@@ -133,7 +135,7 @@ export function HomePage() {
 
   const handleDelete = async () => {
     if (!selected) return;
-    if (!confirm(`Удалить экземпляр «${selected.name}»?`)) return;
+    if (!confirm(t("home.deleteConfirm")?.replace("{name}", selected.name) || `Удалить экземпляр «${selected.name}»?`)) return;
     await window.murflame!.instances.remove(selected.id);
     await loadInstances();
   };
@@ -156,11 +158,11 @@ export function HomePage() {
 
       <div className="instances-toolbar">
         <div>
-          <h2 className="instances-title">Экземпляры</h2>
+          <h2 className="instances-title">{t("home.title")}</h2>
           <p className="instances-subtitle">
             {instances.length > 0
-              ? `${instances.length} установок`
-              : "Создайте экземпляр или установите Forge/Fabric во вкладке «Версии»"}
+              ? `${instances.length} ${t("home.instancesCount") || "установок"}`
+              : t("home.subtitle") || "Создайте экземпляр или установите Forge/Fabric во вкладке «Версии»"}
           </p>
         </div>
         <button
@@ -172,7 +174,7 @@ export function HomePage() {
           }}
         >
           <Plus size={18} />
-          Добавить экземпляр
+          {t("home.add") || "Добавить экземпляр"}
         </button>
       </div>
 
@@ -181,13 +183,12 @@ export function HomePage() {
           {instances.length === 0 ? (
             <div className="instances-empty">
               <Package size={48} strokeWidth={1.2} />
-              <h3>Нет экземпляров</h3>
+              <h3>{t("home.noInstances") || "Нет экземпляров"}</h3>
               <p>
-                Установите версию Minecraft или Forge/Fabric во вкладке «Версии» — экземпляр
-                создастся автоматически.
+                {t("home.noInstancesDesc") || "Установите версию Minecraft или Forge/Fabric во вкладке «Версии» — экземпляр создастся автоматически."}
               </p>
               <button type="button" className="btn btn-secondary" onClick={() => setPage("versions")}>
-                Перейти к версиям
+                {t("home.goToVersions") || "Перейти к версиям"}
               </button>
             </div>
           ) : (
@@ -236,12 +237,12 @@ export function HomePage() {
               {isGameRunning ? (
                 <>
                   <XCircle size={20} />
-                  Закрыть игру
+                  {t("home.closeGame") || "Закрыть игру"}
                 </>
               ) : (
                 <>
                   <Play size={20} fill="currentColor" />
-                  {launching ? "Запуск…" : "Запустить"}
+                  {launching ? (t("home.launching") || "Запуск…") : (t("home.launch") || "Запустить")}
                 </>
               )}
             </button>
@@ -250,7 +251,7 @@ export function HomePage() {
               <li>
                 <button type="button" className="instance-action-btn" onClick={openEdit}>
                   <Pencil size={16} />
-                  Изменить…
+                  {t("home.edit") || "Изменить…"}
                 </button>
               </li>
               <li>
@@ -260,24 +261,24 @@ export function HomePage() {
                   onClick={() => window.murflame?.instances.openFolder(selected.id)}
                 >
                   <FolderOpen size={16} />
-                  Папка
+                  {t("home.folder") || "Папка"}
                 </button>
               </li>
               <li>
                 <button type="button" className="instance-action-btn danger" onClick={handleDelete}>
                   <Trash2 size={16} />
-                  Удалить
+                  {t("home.delete") || "Удалить"}
                 </button>
               </li>
             </ul>
 
             <div className="instance-stats">
               <div>
-                <span className="label">Последний запуск</span>
+                <span className="label">{t("home.lastPlayed") || "Последний запуск"}</span>
                 <span>{formatLastPlayed(selected.lastPlayed)}</span>
               </div>
               <div>
-                <span className="label">Время в игре</span>
+                <span className="label">{t("home.playTime") || "Время в игре"}</span>
                 <span>{formatPlayTime(selected.playTimeMs)}</span>
               </div>
             </div>

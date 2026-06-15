@@ -7,7 +7,7 @@ import type {
   GameInstance,
 } from "../types/api";
 
-type Page = "home" | "accounts" | "skins" | "versions" | "settings" | "mods";
+type Page = "home" | "accounts" | "skins" | "versions" | "settings" | "mods" | "modpack-import";
 
 interface LauncherState {
   page: Page;

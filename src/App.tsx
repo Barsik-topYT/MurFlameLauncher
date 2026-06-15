@@ -7,6 +7,7 @@ import { VersionsPage } from "./pages/VersionsPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { SkinsPage } from "./pages/SkinsPage";
 import { ModsPage } from "./pages/ModsPage";
+import { ModpackImportPage } from "./pages/ModpackImportPage";
 import { LauncherSplashScreen } from "./components/LauncherSplashScreen";
 import { useLauncherStore } from "./store/useLauncherStore";
 
@@ -33,7 +34,7 @@ export default function App() {
       setIsLoading(false);
       return;
     }
-    
+
     try {
       await loadAll();
       pageCache.set('loaded', true);
@@ -51,9 +52,9 @@ export default function App() {
       );
       return;
     }
-    
+
     handleLoadAll();
-    
+
     const unsub = window.murflame.onLaunchProgress((progress) => {
       setProgress(progress);
       // Скрываем сплеш при завершении загрузки
@@ -61,7 +62,7 @@ export default function App() {
         setTimeout(() => setShowSplash(false), 500);
       }
     });
-    
+
     return () => {
       unsub?.();
       pageCache.clear();
@@ -74,7 +75,7 @@ export default function App() {
     if (pageCache.has(page)) {
       return pageCache.get(page);
     }
-    
+
     let component;
     switch (page) {
       case "home":
@@ -95,10 +96,13 @@ export default function App() {
       case "mods":
         component = <ModsPage />;
         break;
+      case "modpack-import":
+        component = <ModpackImportPage />;
+        break;
       default:
         component = <HomePage />;
     }
-    
+
     pageCache.set(page, component);
     return component;
   }, [page]);
@@ -111,8 +115,8 @@ export default function App() {
   return (
     <>
       {showSplash && (
-        <LauncherSplashScreen 
-          onComplete={() => setShowSplash(false)} 
+        <LauncherSplashScreen
+          onComplete={() => setShowSplash(false)}
           minDisplayTime={1500} // Минимальное время отображения
         />
       )}

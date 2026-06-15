@@ -2,10 +2,11 @@ import { useEffect, useState } from "react";
 import { RotateCcw, RefreshCw, Check, ExternalLink, Upload } from "lucide-react";
 import { useLauncherStore } from "../store/useLauncherStore";
 import { SkinAvatar } from "../components/SkinAvatar";
-import { Cape3DViewer } from "../components/Cape3DViewer";
+import { useLocale } from "../hooks/useLocale";
 
 // Компонент управления плащом
 function CapeManager({ account, onUpdate }: { account: any; onUpdate: () => void }) {
+  const { t } = useLocale();
   const [loading, setLoading] = useState(false);
   const [capes, setCapes] = useState<any[]>([]);
   const [currentCapeId, setCurrentCapeId] = useState<string | null>(null);
@@ -42,7 +43,7 @@ function CapeManager({ account, onUpdate }: { account: any; onUpdate: () => void
     setError(null);
     try {
       await window.murflame.skin.resetCape?.(account.id);
-      setSuccess("Плащ сброшен!");
+      setSuccess(t("skins.capeReset") || "Плащ сброшен!");
       setSelectedCapeUrl(null);
       onUpdate();
       await loadCapes();
@@ -59,7 +60,7 @@ function CapeManager({ account, onUpdate }: { account: any; onUpdate: () => void
     setError(null);
     try {
       await window.murflame.skin.setOfficialCape?.(account.id, capeId);
-      setSuccess("Плащ установлен!");
+      setSuccess(t("skins.capeSet") || "Плащ установлен!");
       setSelectedCapeUrl(capeUrl);
       onUpdate();
       await loadCapes();
@@ -74,10 +75,10 @@ function CapeManager({ account, onUpdate }: { account: any; onUpdate: () => void
     <div className="cape-manager">
       {error && <div className="alert alert-error">{error}</div>}
       {success && <div className="alert alert-success">{success}</div>}
-	  
+      
       {/* Текущий плащ */}
       <div className="card">
-        <h3>Текущий плащ</h3>
+        <h3>{t("skins.currentCape")}</h3>
         <div className="current-cape">
           {account.capeUrl ? (
             <img 
@@ -86,16 +87,16 @@ function CapeManager({ account, onUpdate }: { account: any; onUpdate: () => void
               className="cape-preview"
             />
           ) : (
-            <div className="cape-placeholder">Нет плаща</div>
+            <div className="cape-placeholder">{t("skins.noCape")}</div>
           )}
           <div className="cape-actions">
             <button className="btn btn-ghost" onClick={loadCapes} disabled={loading}>
               <RefreshCw size={16} />
-              Обновить
+              {t("skins.refresh")}
             </button>
             <button className="btn btn-ghost" onClick={handleResetCape} disabled={loading}>
               <RotateCcw size={16} />
-              Сбросить
+              {t("skins.resetCape")}
             </button>
           </div>
         </div>
@@ -104,7 +105,7 @@ function CapeManager({ account, onUpdate }: { account: any; onUpdate: () => void
       {/* Список плащей аккаунта */}
       {capes.length > 0 && (
         <div className="card">
-          <h3>Мои плащи</h3>
+          <h3>{t("skins.myCapes")}</h3>
           <div className="capes-grid">
             {capes.map((cape) => (
               <button
@@ -112,12 +113,12 @@ function CapeManager({ account, onUpdate }: { account: any; onUpdate: () => void
                 className={`cape-card ${cape.current ? "current" : ""}`}
                 onClick={() => handleSelectCape(cape.id, cape.url)}
                 disabled={loading || cape.current}
-                title="Клик — установить плащ"
+                title={t("skins.clickToEquip")}
               >
                 <img src={cape.url} alt={cape.name} className="cape-thumbnail" />
                 <div className="cape-info">
                   <div className="cape-name">{cape.name}</div>
-                  {cape.current && <span className="current-badge">Текущий</span>}
+                  {cape.current && <span className="current-badge">{t("skins.current")}</span>}
                 </div>
                 {!cape.current && <Check size={16} className="check-icon" />}
               </button>
@@ -125,123 +126,12 @@ function CapeManager({ account, onUpdate }: { account: any; onUpdate: () => void
           </div>
         </div>
       )}
-
-      <style>{`
-        .cape-manager {
-          display: flex;
-          flex-direction: column;
-          gap: 20px;
-        }
-        
-        .current-cape {
-          display: flex;
-          align-items: center;
-          gap: 24px;
-          flex-wrap: wrap;
-        }
-        
-        .cape-preview {
-          width: 200px;
-          height: auto;
-          image-rendering: pixelated;
-          background: var(--bg-secondary);
-          border-radius: 8px;
-          transition: transform 0.2s;
-        }
-        
-        .cape-preview:hover {
-          transform: scale(1.02);
-        }
-        
-        .cape-placeholder {
-          width: 200px;
-          height: 80px;
-          background: var(--bg-secondary);
-          border-radius: 8px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          color: var(--text-muted);
-        }
-        
-        .cape-actions {
-          display: flex;
-          gap: 8px;
-        }
-        
-        .capes-grid {
-          display: flex;
-          flex-direction: column;
-          gap: 12px;
-          margin-top: 16px;
-          max-height: 300px;
-          overflow-y: auto;
-          padding-right: 8px;
-        }
-        
-        .cape-card {
-          display: flex;
-          align-items: center;
-          gap: 16px;
-          padding: 12px;
-          background: var(--bg-secondary);
-          border-radius: 8px;
-          cursor: pointer;
-          transition: all 0.2s;
-          text-align: left;
-          width: 100%;
-        }
-        
-        .cape-card:hover:not(:disabled) {
-          background: var(--bg-hover);
-          transform: translateX(4px);
-        }
-        
-        .cape-card.current {
-          border-left: 3px solid #f59e0b;
-          background: rgba(245, 158, 11, 0.1);
-          cursor: default;
-        }
-        
-        .cape-card.current:hover {
-          transform: none;
-        }
-        
-        .cape-thumbnail {
-          width: 48px;
-          height: 32px;
-          image-rendering: pixelated;
-          border-radius: 4px;
-        }
-        
-        .cape-info {
-          flex: 1;
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-        }
-        
-        .cape-name {
-          font-weight: 600;
-        }
-        
-        .current-badge {
-          font-size: 11px;
-          color: #f59e0b;
-          background: rgba(245, 158, 11, 0.2);
-          padding: 2px 8px;
-          border-radius: 4px;
-        }
-        
-        .check-icon {
-          color: #10b981;
-        }
-      `}</style>
     </div>
   );
 }
 
 export function SkinsPage() {
+  const { t } = useLocale();
   const { activeAccount, loadAccounts, setError, error } = useLauncherStore();
   const [variant, setVariant] = useState<"classic" | "slim">("classic");
   const [loading, setLoading] = useState(false);
@@ -281,7 +171,7 @@ export function SkinsPage() {
     try {
       await window.murflame.accounts.elyLogin();
       await loadAccounts();
-      setSuccess("Успешный вход в ely.by!");
+      setSuccess(t("skins.elyLoginSuccess"));
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -314,7 +204,7 @@ export function SkinsPage() {
       await loadAccounts();
       setPreviewFile(null);
       setPreviewHead(null);
-      setSuccess("Скин загружен! Обновится через несколько секунд.");
+      setSuccess(t("skins.skinUploaded"));
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -332,7 +222,7 @@ export function SkinsPage() {
       await loadAccounts();
       setPreviewFile(null);
       setPreviewHead(null);
-      setSuccess("Скин сброшен до стандартного.");
+      setSuccess(t("skins.skinReset"));
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -347,7 +237,7 @@ export function SkinsPage() {
     try {
       await window.murflame.skin.sync(activeAccount!.id);
       await loadAccounts();
-      setSuccess("Синхронизация завершена.");
+      setSuccess(t("skins.syncComplete"));
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -358,8 +248,8 @@ export function SkinsPage() {
   if (!activeAccount) {
     return (
       <div className="page-header">
-        <h2>Скины и плащи</h2>
-        <p>Выберите аккаунт во вкладке «Аккаунты»</p>
+        <h2>{t("skins.title")}</h2>
+        <p>{t("skins.selectAccount")}</p>
       </div>
     );
   }
@@ -369,8 +259,8 @@ export function SkinsPage() {
     return (
       <>
         <div className="page-header">
-          <h2>Скины и плащи</h2>
-          <p>Войдите в ely.by для управления скинами и плащами</p>
+          <h2>{t("skins.title")}</h2>
+          <p>{t("skins.elyDesc")}</p>
         </div>
         
         {error && <div className="alert alert-error">{error}</div>}
@@ -378,7 +268,7 @@ export function SkinsPage() {
         
         <div className="card" style={{ textAlign: "center", padding: 40 }}>
           <p style={{ marginBottom: 20 }}>
-            ely.by — бесплатный сервис скинов для Minecraft
+            ely.by — {t("skins.elyFree")}
           </p>
           <button
             className="btn btn-primary"
@@ -386,7 +276,7 @@ export function SkinsPage() {
             disabled={loading}
           >
             <ExternalLink size={16} />
-            Войти через ely.by
+            {t("skins.elyLogin")}
           </button>
         </div>
       </>
@@ -396,9 +286,9 @@ export function SkinsPage() {
   return (
     <>
       <div className="page-header">
-        <h2>Скины и плащи</h2>
+        <h2>{t("skins.title")}</h2>
         <p>
-          Аккаунт: <strong>{activeAccount.username}</strong>
+          {t("skins.account")} <strong>{activeAccount.username}</strong>
           <span className={`badge ${isPremium ? "badge-ms" : "badge-ely"}`} style={{ marginLeft: 8 }}>
             {isPremium ? "Microsoft" : "ely.by"}
           </span>
@@ -413,13 +303,13 @@ export function SkinsPage() {
           className={`tab ${activeTab === "skin" ? "active" : ""}`}
           onClick={() => setActiveTab("skin")}
         >
-          Скин
+          {t("skins.skin")}
         </button>
         <button
           className={`tab ${activeTab === "cape" ? "active" : ""}`}
           onClick={() => setActiveTab("cape")}
         >
-          Плащ
+          {t("skins.cape")}
         </button>
       </div>
 
@@ -440,7 +330,7 @@ export function SkinsPage() {
               <SkinAvatar account={activeAccount} size={96} className="account-avatar" showCapePreview={true} />
             )}
             <p style={{ color: "var(--text-muted)", fontSize: 13, marginTop: 12 }}>
-              {previewHead ? "Предпросмотр (голова)" : "Текущий скин"}
+              {previewHead ? t("skins.skinPreview") : t("skins.currentSkin")}
             </p>
             <button
               type="button"
@@ -450,27 +340,27 @@ export function SkinsPage() {
               disabled={loading}
             >
               <RefreshCw size={14} />
-              Синхронизировать
+              {t("skins.sync")}
             </button>
           </div>
 
           <div className="card" style={{ flex: 1 }}>
             <div className="form-group">
-              <label>Модель рук</label>
+              <label>{t("skins.model")}</label>
               <select
                 className="select"
                 value={variant}
                 onChange={(e) => setVariant(e.target.value as "classic" | "slim")}
               >
-                <option value="classic">Classic (широкие рукава, как у Steve)</option>
-                <option value="slim">Slim (тонкие рукава, как у Alex)</option>
+                <option value="classic">{t("skins.modelClassic")}</option>
+                <option value="slim">{t("skins.modelSlim")}</option>
               </select>
             </div>
 
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
               <button type="button" className="btn btn-secondary" onClick={handlePickSkin}>
                 <Upload size={16} />
-                Выбрать PNG скин
+                {t("skins.selectSkin")}
               </button>
               {previewFile && (
                 <button
@@ -479,7 +369,7 @@ export function SkinsPage() {
                   onClick={handleApplySkin}
                   disabled={loading}
                 >
-                  Загрузить
+                  {t("skins.upload")}
                 </button>
               )}
               <button
@@ -489,13 +379,13 @@ export function SkinsPage() {
                 disabled={loading}
               >
                 <RotateCcw size={16} />
-                Сбросить скин
+                {t("skins.reset")}
               </button>
             </div>
 
             {previewFile && (
               <p style={{ marginTop: 12, fontSize: 12, color: "var(--text-muted)" }}>
-                Файл: {previewFile.split(/[/\\]/).pop()}
+                {t("skins.file")}: {previewFile.split(/[/\\]/).pop()}
               </p>
             )}
           </div>
@@ -506,88 +396,6 @@ export function SkinsPage() {
       {activeTab === "cape" && (
         <CapeManager account={activeAccount} onUpdate={loadAccounts} />
       )}
-
-      <style>{`
-        .skin-manager {
-          display: flex;
-          gap: 24px;
-          flex-wrap: wrap;
-        }
-        
-        .skin-preview-card {
-          text-align: center;
-          min-width: 150px;
-        }
-        
-        .badge-ms {
-          background: #107c10;
-          color: white;
-          padding: 2px 8px;
-          border-radius: 4px;
-          font-size: 12px;
-        }
-        
-        .badge-ely {
-          background: #9b59b6;
-          color: white;
-          padding: 2px 8px;
-          border-radius: 4px;
-          font-size: 12px;
-        }
-        
-        .tabs {
-          display: flex;
-          gap: 4px;
-          margin-bottom: 24px;
-          border-bottom: 1px solid var(--border-color);
-        }
-        
-        .tab {
-          padding: 8px 16px;
-          background: none;
-          border: none;
-          cursor: pointer;
-          font-size: 14px;
-          color: var(--text-muted);
-          transition: all 0.2s;
-        }
-        
-        .tab.active {
-          color: var(--accent);
-          border-bottom: 2px solid var(--accent);
-        }
-        
-        .account-avatar {
-          width: 96px;
-          height: 96px;
-          border-radius: 8px;
-          background: var(--bg-secondary);
-          image-rendering: pixelated;
-        }
-        
-        .alert {
-          padding: 12px 16px;
-          border-radius: 8px;
-          margin-bottom: 20px;
-        }
-        
-        .alert-error {
-          background: rgba(220, 38, 38, 0.1);
-          border: 1px solid rgba(220, 38, 38, 0.3);
-          color: #ef4444;
-        }
-        
-        .alert-success {
-          background: rgba(34, 197, 94, 0.1);
-          border: 1px solid rgba(34, 197, 94, 0.3);
-          color: #22c55e;
-        }
-        
-        .text-muted {
-          color: var(--text-muted);
-          font-size: 12px;
-        }
-      `}</style>
     </>
   );
 }

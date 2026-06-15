@@ -11,6 +11,7 @@ export interface LauncherSettings {
   backgroundOpacity: number;
   sidebarCompact: boolean;
   language: "ru" | "en";
+  uiMode: "default" | "simplified";
   closeOnLaunch: boolean;
   closeToTray: boolean;
   versionFilter: "all" | "release" | "snapshot" | "old_beta" | "old_alpha";
@@ -20,26 +21,7 @@ export interface LauncherSettings {
   showSnapshots?: boolean;
 }
 
-// Значения по умолчанию
-export const DEFAULT_SETTINGS: LauncherSettings = {
-  gameDir: "",
-  javaPath: "",
-  maxMemory: 4096,
-  minMemory: 512,
-  theme: "murflame",
-  accentColor: "#ff6b35",
-  backgroundOpacity: 0.85,
-  sidebarCompact: false,
-  language: "ru",
-  closeOnLaunch: false,
-  closeToTray: false,
-  versionFilter: "all",
-  customJvmArgs: "",
-  windowWidth: 1200,
-  windowHeight: 750,
-};
-
-// Типы для аккаунтов
+// Аккаунт
 export interface Account {
   id: string;
   type: "microsoft" | "offline" | "ely";
@@ -56,27 +38,28 @@ export interface Account {
   capeUrl?: string;
 }
 
-// Типы для версий
+// Версии Minecraft
 export interface VersionInfo {
   id: string;
-  type: string; // "release", "snapshot", "old_beta", "old_alpha", "installed", "forge", "fabric" и т.д.
+  type: string;
   installed: boolean;
 }
 
-// Типы для прогресса запуска
+// Прогресс запуска
 export interface LaunchProgress {
   stage: string;
   percent: number;
   message: string;
 }
 
-// Типы для Java
+// Java информация
 export interface JavaInfo {
   path: string;
   version: string;
+  bits?: number;
 }
 
-// Типы для инстансов
+// Игровой экземпляр
 export interface GameInstance {
   id: string;
   name: string;
@@ -89,6 +72,11 @@ export interface GameInstance {
   lastPlayed?: number;
   playTimeMs: number;
   instanceFolder?: string;
+  overrideMemory?: boolean;
+  minMemory?: number;
+  maxMemory?: number;
+  overrideJvmArgs?: boolean;
+  customJvmArgs?: string;
 }
 
 export type InstanceIcon =
@@ -102,18 +90,21 @@ export type InstanceIcon =
   | "creeper"
   | "ender"
   | "nether"
-  | "custom";
+  | "custom"
+  | "tnt"
+  | "star"
+  | "package";
 
-// Типы для установки модлоадеров
+export type InstanceLoader = "vanilla" | "fabric" | "forge" | "neoforge" | "quilt" | "optifine";
+
+// Результат установки модлоадера
 export interface ModLoaderInstallResult {
   versionId: string;
   warning?: string;
   instance?: GameInstance;
 }
 
-export type InstanceLoader = "vanilla" | "fabric" | "forge" | "neoforge" | "quilt" | "optifine";
-
-// Типы для модов
+// Modrinth проекты
 export interface ModrinthProject {
   id: string;
   slug: string;
@@ -140,6 +131,7 @@ export interface ModrinthVersion {
   }[];
 }
 
+// CurseForge проекты
 export interface CurseForgeProject {
   id: string;
   slug: string;
@@ -162,6 +154,26 @@ export interface CurseForgeVersion {
   file_name: string;
   download_url: string;
 }
+
+// Значения по умолчанию
+export const DEFAULT_SETTINGS: LauncherSettings = {
+  gameDir: "",
+  javaPath: "",
+  maxMemory: 4096,
+  minMemory: 512,
+  theme: "murflame",
+  accentColor: "#ff6b35",
+  backgroundOpacity: 0.85,
+  sidebarCompact: false,
+  language: "ru",
+  uiMode: "default",
+  closeOnLaunch: false,
+  closeToTray: true,
+  versionFilter: "all",
+  customJvmArgs: "",
+  windowWidth: 1200,
+  windowHeight: 800,
+};
 
 // Интерфейс API для лаунчера
 export interface MurFlameAPI {
@@ -189,6 +201,7 @@ export interface MurFlameAPI {
     install: (id: string) => Promise<void>;
     delete: (id: string) => Promise<void>;
     last: () => Promise<string>;
+    installUnofficial?: (id: string, downloadUrl: string) => Promise<boolean>;
   };
   instances: {
     list: () => Promise<GameInstance[]>;
@@ -213,6 +226,19 @@ export interface MurFlameAPI {
     remove: (id: string) => Promise<GameInstance[]>;
     openFolder: (id: string) => Promise<string>;
     launch: (id: string) => Promise<void>;
+    pickZip: () => Promise<string | null>;
+    readModpackMetadata: (zipPath: string) => Promise<{
+      name: string;
+      version?: string;
+      author?: string;
+      description?: string;
+      mcVersion?: string;
+      loader?: string;
+      loaderVersion?: string;
+      type: "modrinth" | "curseforge" | "zip";
+    }>;
+    importModpack: (zipPath: string, name: string) => Promise<GameInstance>;
+    duplicate: (id: string) => Promise<GameInstance>;
   };
   modrinth: {
     search: (
@@ -235,8 +261,8 @@ export interface MurFlameAPI {
     installMod: (projectId: string, fileId: string, instanceId: string) => Promise<boolean>;
   };
   mods: {
-    listInstalled: (instanceId: string) => Promise<string[]>;
-    removeMod: (instanceId: string, fileName: string) => Promise<boolean>;
+    listInstalled: (instanceId: string) => Promise<{ files: string[]; map: Record<string, string> }>;
+    removeMod: (instanceId: string, fileName: string, projectKey?: string) => Promise<boolean>;
   };
   game: {
     launch: (versionId: string, instancePath?: string, loader?: string) => Promise<void>;
@@ -248,6 +274,7 @@ export interface MurFlameAPI {
     minimize: () => void;
     maximize: () => void;
     close: () => void;
+    show?: () => void;
   };
   shell: {
     open: (url: string) => Promise<void>;
@@ -259,7 +286,8 @@ export interface MurFlameAPI {
     reset: (accountId: string) => Promise<Account>;
     sync: (accountId: string) => Promise<Account>;
     previewHead: (filePath: string) => Promise<string>;
-    getCapes?: (accountId: string) => Promise<string[]>;
+    previewCape?: (capeUrl: string) => Promise<void>;
+    getCapes?: (accountId: string) => Promise<any[]>;
     applyCape?: (accountId: string, filePath: string) => Promise<void>;
     setOfficialCape?: (accountId: string, capeId: string) => Promise<void>;
     resetCape?: (accountId: string) => Promise<void>;
@@ -273,6 +301,7 @@ export interface MurFlameAPI {
     ) => Promise<ModLoaderInstallResult>;
   };
   onLaunchProgress: (cb: (p: LaunchProgress) => void) => () => void;
+  onImportProgress: (cb: (data: { progress: number; message: string }) => void) => () => void;
 }
 
 export interface SkinInfo {

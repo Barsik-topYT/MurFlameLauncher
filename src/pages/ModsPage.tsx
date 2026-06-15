@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { useLauncherStore } from "../store/useLauncherStore";
 import type { ModrinthProject, CurseForgeProject } from "../types/api";
+import { useLocale } from "../hooks/useLocale";
 
 const COMMON_VERSIONS = [
   "1.21",
@@ -35,6 +36,7 @@ const COMMON_VERSIONS = [
 const LOADERS = ["fabric", "forge", "neoforge", "quilt"];
 
 export function ModsPage() {
+  const { t } = useLocale();
   const { instances, selectedInstanceId, setSelectedInstance } = useLauncherStore();
 
   const activeInstance = useMemo(() => {
@@ -126,12 +128,12 @@ export function ModsPage() {
         }
         setOffset(pageOffset);
       } catch (e) {
-        setSearchError((e as Error).message || "Не удалось загрузить моды");
+        setSearchError((e as Error).message || t("mods.searchError") || "Не удалось загрузить моды");
       } finally {
         setSearching(false);
       }
     },
-    [limit, platform]
+    [limit, platform, t]
   );
 
   useEffect(() => {
@@ -183,10 +185,10 @@ export function ModsPage() {
         }));
         await loadInstalledMods();
       } else {
-        throw new Error("Не удалось скачать файл мода");
+        throw new Error(t("mods.downloadFailed") || "Не удалось скачать файл мода");
       }
     } catch (e) {
-      const errMsg = (e as Error).message || "Ошибка при установке";
+      const errMsg = (e as Error).message || t("mods.installError") || "Ошибка при установке";
       setInstallState((prev) => ({
         ...prev,
         [instId]: {
@@ -250,15 +252,15 @@ export function ModsPage() {
     <div className="mods-page">
       <div className="mods-header">
         <div>
-          <h2>Модификации</h2>
+          <h2>{t("mods.title")}</h2>
           <p className="mods-subtitle">
-            Ищите и скачивайте моды напрямую из {platform === "modrinth" ? "Modrinth" : "CurseForge"} в один клик
+            {t("mods.desc").replace("{platform}", platform === "modrinth" ? "Modrinth" : "CurseForge")}
           </p>
         </div>
         <div className="mods-instance-picker">
-          <span className="picker-label">Экземпляр:</span>
+          <span className="picker-label">{t("mods.instance")}</span>
           {instances.length === 0 ? (
-            <span className="picker-empty">Создайте экземпляр в меню «Экземпляры»</span>
+            <span className="picker-empty">{t("mods.noInstance")}</span>
           ) : (
             <select
               value={selectedInstanceId || ""}
@@ -277,10 +279,7 @@ export function ModsPage() {
       {activeInstance && activeInstance.loader === "vanilla" && (
         <div className="mods-warning">
           <AlertTriangle size={16} className="warning-icon" />
-          <span>
-            Выбран чистый экземпляр <strong>Vanilla</strong>. Чтобы моды запускались, рекомендуется
-            перейти во вкладку «Экземпляры», нажать «Изменить» и установить загрузчик Fabric или Forge.
-          </span>
+          <span>{t("mods.warning")}</span>
         </div>
       )}
       <div className="mods-toolbar border-glow">
@@ -302,7 +301,7 @@ export function ModsPage() {
           <Search size={18} className="search-icon" />
           <input
             type="text"
-            placeholder="Поиск модов..."
+            placeholder={t("mods.search")}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             className="search-input"
@@ -338,7 +337,7 @@ export function ModsPage() {
         {searching && currentMods.length === 0 ? (
           <div className="mods-loading">
             <Loader2 size={36} className="spin" />
-            <p>Загрузка списка модов...</p>
+            <p>{t("mods.loading") || "Загрузка списка модов..."}</p>
           </div>
         ) : searchError ? (
           <div className="mods-error">
@@ -349,13 +348,13 @@ export function ModsPage() {
               className="btn btn-secondary"
               onClick={() => performSearch(query, versionFilter, loaderFilter, offset)}
             >
-              Повторить попытку
+              {t("mods.retry") || "Повторить попытку"}
             </button>
           </div>
         ) : currentMods.length === 0 ? (
           <div className="mods-empty">
             <AlertTriangle size={40} />
-            <p>По вашему запросу ничего не найдено</p>
+            <p>{t("mods.noResults") || "По вашему запросу ничего не найдено"}</p>
           </div>
         ) : (
           <div className="mods-list-wrapper">
@@ -385,14 +384,14 @@ export function ModsPage() {
                           ))}
                         </div>
                         <div className="mod-stats">
-                          <span title="Скачиваний">
+                          <span title={t("mods.downloads") || "Скачиваний"}>
                             <Download size={12} /> {formatCount(mod.downloads)}
                           </span>
-                          <span title="Подписчиков">
+                          <span title={t("mods.followers") || "Подписчиков"}>
                             <ThumbsUp size={12} /> {formatCount(mod.followers)}
                           </span>
                           {mod.date_modified && (
-                            <span title="Обновлен">
+                            <span title={t("mods.updated") || "Обновлен"}>
                               <Calendar size={12} /> {formatDate(mod.date_modified)}
                             </span>
                           )}
@@ -425,7 +424,7 @@ export function ModsPage() {
                           onClick={() => handleRemoveMod(installedFileName, mod.id)}
                         >
                           <Trash2 size={14} />
-                          Удалить
+                          {t("mods.remove") || "Удалить"}
                         </button>
                       )}
                       {!installedFileName && state.status === "idle" && (
@@ -439,7 +438,7 @@ export function ModsPage() {
                           )}
                         >
                           <Download size={14} />
-                          Скачать
+                          {t("mods.download") || "Скачать"}
                         </button>
                       )}
                       {!installedFileName && state.status === "installing" && (
@@ -449,19 +448,19 @@ export function ModsPage() {
                           disabled
                         >
                           <Loader2 size={14} className="spin" />
-                          Установка...
+                          {t("mods.installing") || "Установка..."}
                         </button>
                       )}
                       {!installedFileName && state.status === "installed" && (
-                        <div className="mod-status-success" title="Мод успешно скачан и установлен">
+                        <div className="mod-status-success" title={t("mods.installedTitle") || "Мод успешно скачан и установлен"}>
                           <Check size={16} />
-                          Установлено
+                          {t("mods.installed") || "Установлено"}
                         </div>
                       )}
                       {!installedFileName && state.status === "error" && (
                         <div className="mod-status-error" title={state.error}>
                           <AlertTriangle size={14} />
-                          Ошибка
+                          {t("mods.error") || "Ошибка"}
                           <button
                             type="button"
                             className="mod-retry-btn"
@@ -469,7 +468,7 @@ export function ModsPage() {
                               mod.id,
                               isCurseForge ? (mod as CurseForgeProject).latest_file_id : undefined
                             )}
-                            title="Повторить попытку"
+                            title={t("mods.retry") || "Повторить попытку"}
                           >
                             🔄
                           </button>
@@ -490,7 +489,7 @@ export function ModsPage() {
                 <ChevronLeft size={18} />
               </button>
               <span className="pagination-info">
-                Страница {currentPage} из {totalPages} ({totalHits} модов)
+                {t("mods.page") || "Страница"} {currentPage} {t("mods.of") || "из"} {totalPages} ({totalHits} {t("mods.mods") || "модов"})
               </span>
               <button
                 type="button"

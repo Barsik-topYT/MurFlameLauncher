@@ -140,6 +140,10 @@ updater: {
     remove: (id: string) => ipcRenderer.invoke("instances:remove", id),
     openFolder: (id: string) => ipcRenderer.invoke("instances:openFolder", id),
     launch: (id: string) => ipcRenderer.invoke("instances:launch", id),
+    pickZip: () => ipcRenderer.invoke("instances:pickZip"),
+    readModpackMetadata: (zipPath: string) => ipcRenderer.invoke("instances:readModpackMetadata", zipPath),
+    importModpack: (zipPath: string, name: string) => ipcRenderer.invoke("instances:importModpack", zipPath, name),
+    duplicate: (id: string) => ipcRenderer.invoke("instances:duplicate", id),
   },
   modrinth: {
     search: (
@@ -175,6 +179,11 @@ updater: {
     const handler = (_: unknown, data: LaunchProgress) => cb(data);
     ipcRenderer.on("launch:progress", handler);
     return () => ipcRenderer.removeListener("launch:progress", handler);
+  },
+  onImportProgress: (cb: (data: { progress: number; message: string }) => void) => {
+    const handler = (_: unknown, data: { progress: number; message: string }) => cb(data);
+    ipcRenderer.on("import:progress", handler);
+    return () => ipcRenderer.removeListener("import:progress", handler);
   },
 };
 

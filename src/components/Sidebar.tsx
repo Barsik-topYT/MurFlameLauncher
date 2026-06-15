@@ -1,58 +1,60 @@
-import { Home, Users, Package, Settings, Shirt, Flame, Puzzle } from "lucide-react";
+import {
+  Home,
+  Users,
+  Package,
+  Settings,
+  Palette,
+  Gamepad2,
+  Upload,
+  Flame
+} from "lucide-react";
 import { useLauncherStore } from "../store/useLauncherStore";
-import { SkinAvatar } from "./SkinAvatar";
+import { useLocale } from "../hooks/useLocale";
 
-const NAV = [
-  { id: "home" as const, icon: Home, label: "Экземпляры" },
-  { id: "accounts" as const, icon: Users, label: "Аккаунты" },
-  { id: "skins" as const, icon: Shirt, label: "Скины" },
-  { id: "mods" as const, icon: Puzzle, label: "Моды" },
-  { id: "versions" as const, icon: Package, label: "Версии" },
-  { id: "settings" as const, icon: Settings, label: "Настройки" },
+const menuItems = [
+  { id: "home", labelKey: "nav.home", icon: Home },
+  { id: "accounts", labelKey: "nav.accounts", icon: Users },
+  { id: "versions", labelKey: "nav.versions", icon: Package },
+  { id: "mods", labelKey: "nav.mods", icon: Gamepad2 },
+  { id: "skins", labelKey: "nav.skins", icon: Palette },
+  { id: "modpack-import", labelKey: "nav.import", icon: Upload },
+  { id: "settings", labelKey: "nav.settings", icon: Settings },
 ];
 
 export function Sidebar() {
-  const page = useLauncherStore((s) => s.page);
-  const setPage = useLauncherStore((s) => s.setPage);
-  const activeAccount = useLauncherStore((s) => s.activeAccount);
-  const settings = useLauncherStore((s) => s.settings);
-  const compact = settings?.sidebarCompact;
+  const { page, setPage, settings } = useLauncherStore();
+  const { t } = useLocale();
+  const isCompact = settings?.sidebarCompact ?? false;
+  const uiMode = settings?.uiMode ?? "default";
+
+  // В упрощённом режиме скрываем сайдбар
+  if (uiMode === "simplified") {
+    return null;
+  }
 
   return (
-    <aside className={`sidebar ${compact ? "compact" : ""}`}>
+    <aside className={`sidebar ${isCompact ? "compact" : ""}`}>
       <div className="sidebar-brand">
-        <Flame size={22} className="flame sidebar-brand-icon" />
-        {!compact && <span>MurFlame</span>}
+        <Flame size={28} className="sidebar-brand-icon" />
+        {!isCompact && <span>MurFlame</span>}
       </div>
-
       <nav className="sidebar-nav">
-        {NAV.map(({ id, icon: Icon, label }) => (
-          <button
-            key={id}
-            type="button"
-            className={`nav-item ${page === id ? "active" : ""}`}
-            onClick={() => setPage(id)}
-            title={label}
-          >
-            <Icon size={20} />
-            {!compact && <span>{label}</span>}
-          </button>
-        ))}
+        {menuItems.map((item) => {
+          const Icon = item.icon;
+          const isActive = page === item.id;
+          return (
+            <button
+              key={item.id}
+              className={`nav-item ${isActive ? "active" : ""}`}
+              onClick={() => setPage(item.id as any)}
+              title={isCompact ? t(item.labelKey) : undefined}
+            >
+              <Icon size={20} />
+              {!isCompact && <span>{t(item.labelKey)}</span>}
+            </button>
+          );
+        })}
       </nav>
-
-      {activeAccount && (
-        <div className={`sidebar-account ${compact ? "compact" : ""}`}>
-          <SkinAvatar account={activeAccount} size={compact ? 36 : 44} className="account-avatar" />
-          {!compact && (
-            <div className="sidebar-account-text">
-              <div className="name">{activeAccount.username}</div>
-              <div className="type">
-                {activeAccount.type === "microsoft" ? "Лицензия" : "Офлайн"}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
     </aside>
   );
 }

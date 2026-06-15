@@ -1,4 +1,4 @@
-// electron/types.ts
+// src/types/api.ts
 
 // Основные настройки лаунчера
 export interface LauncherSettings {
@@ -10,7 +10,8 @@ export interface LauncherSettings {
   accentColor: string;
   backgroundOpacity: number;
   sidebarCompact: boolean;
-  language: string;
+  language: "ru" | "en";
+  uiMode: "default" | "simplified";
   closeOnLaunch: boolean;
   closeToTray: boolean;
   versionFilter: "all" | "release" | "snapshot" | "old_beta" | "old_alpha";
@@ -20,26 +21,7 @@ export interface LauncherSettings {
   showSnapshots?: boolean;
 }
 
-// Значения по умолчанию
-export const DEFAULT_SETTINGS: LauncherSettings = {
-  gameDir: "",
-  javaPath: "",
-  maxMemory: 4096,
-  minMemory: 512,
-  theme: "murflame",
-  accentColor: "#ff6b35",
-  backgroundOpacity: 0.85,
-  sidebarCompact: false,
-  language: "ru",
-  closeOnLaunch: false,
-  closeToTray: false,
-  versionFilter: "all",
-  customJvmArgs: "",
-  windowWidth: 1200,
-  windowHeight: 750,
-};
-
-// Типы для аккаунтов
+// Аккаунт
 export interface Account {
   id: string;
   type: "microsoft" | "offline" | "ely";
@@ -56,38 +38,45 @@ export interface Account {
   capeUrl?: string;
 }
 
-// Типы для версий
+// Версии Minecraft
 export interface VersionInfo {
   id: string;
   type: string;
   installed: boolean;
 }
 
-// Типы для прогресса запуска
+// Прогресс запуска
 export interface LaunchProgress {
   stage: string;
   percent: number;
   message: string;
 }
 
-// Типы для Java
+// Java информация
 export interface JavaInfo {
   path: string;
   version: string;
+  bits?: number;
 }
 
-// Типы для инстансов
+// Игровой экземпляр
 export interface GameInstance {
   id: string;
   name: string;
   versionId: string;
   mcVersion: string;
-  loader: InstanceLoader;
+  loader: "vanilla" | "fabric" | "forge" | "neoforge" | "quilt" | "optifine";
   icon: InstanceIcon;
   notes?: string;
   createdAt: number;
   lastPlayed?: number;
   playTimeMs: number;
+  instanceFolder?: string;
+  overrideMemory?: boolean;
+  minMemory?: number;
+  maxMemory?: number;
+  overrideJvmArgs?: boolean;
+  customJvmArgs?: string;
 }
 
 export type InstanceIcon =
@@ -103,18 +92,19 @@ export type InstanceIcon =
   | "nether"
   | "custom"
   | "tnt"
-  | "star";
+  | "star"
+  | "package";
 
-// Типы для установки модлоадеров
+export type InstanceLoader = "vanilla" | "fabric" | "forge" | "neoforge" | "quilt" | "optifine";
+
+// Результат установки модлоадера
 export interface ModLoaderInstallResult {
   versionId: string;
   warning?: string;
   instance?: GameInstance;
 }
 
-export type InstanceLoader = "vanilla" | "fabric" | "forge" | "neoforge" | "quilt" | "optifine";
-
-// Типы для модов
+// Modrinth проекты
 export interface ModrinthProject {
   id: string;
   slug: string;
@@ -128,19 +118,7 @@ export interface ModrinthProject {
   date_modified?: string;
 }
 
-export interface ModrinthVersion {
-  id: string;
-  name: string;
-  version_number: string;
-  game_versions: string[];
-  loaders: string[];
-  files: {
-    url: string;
-    filename: string;
-    primary: boolean;
-  }[];
-}
-
+// CurseForge проекты
 export interface CurseForgeProject {
   id: string;
   slug: string;
@@ -156,15 +134,7 @@ export interface CurseForgeProject {
   latest_file_name?: string;
 }
 
-export interface CurseForgeVersion {
-  id: string;
-  name: string;
-  file_id: string;
-  file_name: string;
-  download_url: string;
-}
-
-// Интерфейс API для лаунчера
+// Интерфейс API для лаунчера (для фронтенда)
 export interface MurFlameAPI {
   settings: {
     get: () => Promise<LauncherSettings>;
@@ -190,6 +160,8 @@ export interface MurFlameAPI {
     install: (id: string) => Promise<void>;
     delete: (id: string) => Promise<void>;
     last: () => Promise<string>;
+    installUnofficial?: (id: string, downloadUrl: string) => Promise<boolean>;
+    onUpdated?: (cb: () => void) => () => void;
   };
   instances: {
     list: () => Promise<GameInstance[]>;
@@ -205,10 +177,7 @@ export interface MurFlameAPI {
       withSodiumIris?: boolean;
       withOptifine?: boolean;
     }) => Promise<GameInstance>;
-    update: (
-      id: string,
-      patch: Partial<Omit<GameInstance, "id">
-    ) => Promise<GameInstance>;
+    update: (id: string, patch: Partial<Omit<GameInstance, "id">>) => Promise<GameInstance>;
     updateLoader: (
       id: string,
       newLoader: "vanilla" | "fabric" | "forge" | "neoforge" | "quilt",
@@ -217,6 +186,19 @@ export interface MurFlameAPI {
     remove: (id: string) => Promise<GameInstance[]>;
     openFolder: (id: string) => Promise<string>;
     launch: (id: string) => Promise<void>;
+    pickZip: () => Promise<string | null>;
+    readModpackMetadata: (zipPath: string) => Promise<{
+      name: string;
+      version?: string;
+      author?: string;
+      description?: string;
+      mcVersion?: string;
+      loader?: string;
+      loaderVersion?: string;
+      type: "modrinth" | "curseforge" | "zip";
+    }>;
+    importModpack: (zipPath: string, name: string) => Promise<GameInstance>;
+    duplicate: (id: string) => Promise<GameInstance>;
   };
   modrinth: {
     search: (
@@ -239,7 +221,7 @@ export interface MurFlameAPI {
     installMod: (projectId: string, fileId: string, instanceId: string) => Promise<boolean>;
   };
   mods: {
-    listInstalled: (instanceId: string) => Promise<{ files: string[], map: Record<string, string> }>;
+    listInstalled: (instanceId: string) => Promise<{ files: string[]; map: Record<string, string> }>;
     removeMod: (instanceId: string, fileName: string, projectKey?: string) => Promise<boolean>;
   };
   game: {
@@ -252,6 +234,7 @@ export interface MurFlameAPI {
     minimize: () => void;
     maximize: () => void;
     close: () => void;
+    show?: () => void;
   };
   shell: {
     open: (url: string) => Promise<void>;
@@ -259,33 +242,24 @@ export interface MurFlameAPI {
   skin: {
     getAvatar: (accountId: string) => Promise<string>;
     pickFile: () => Promise<string | null>;
-    apply: (
-      accountId: string,
-      filePath: string,
-      variant?: "classic" | "slim"
-    ) => Promise<Account>;
+    apply: (accountId: string, filePath: string, variant?: "classic" | "slim") => Promise<Account>;
     reset: (accountId: string) => Promise<Account>;
     sync: (accountId: string) => Promise<Account>;
     previewHead: (filePath: string) => Promise<string>;
-    getCapes?: (accountId: string) => Promise<string[]>;
+    previewCape?: (capeUrl: string) => Promise<void>;
+    getCapes?: (accountId: string) => Promise<any[]>;
     applyCape?: (accountId: string, filePath: string) => Promise<void>;
     setOfficialCape?: (accountId: string, capeId: string) => Promise<void>;
     resetCape?: (accountId: string) => Promise<void>;
   };
   modloader: {
-    list: (
-      loader: "fabric" | "quilt" | "forge" | "neoforge",
-      mcVersion: string
-    ) => Promise<{ id: string; label: string }[]>;
+    list: (loader: "fabric" | "quilt" | "forge" | "neoforge", mcVersion: string) => Promise<{ id: string; label: string }[]>;
     install: (
       loader: "fabric" | "quilt" | "forge" | "neoforge",
       mcVersion: string,
-      options?: {
-        loaderVersion?: string;
-        withOptifine?: boolean;
-        withSodiumIris?: boolean;
-      }
+      options?: { loaderVersion?: string; withOptifine?: boolean; withSodiumIris?: boolean }
     ) => Promise<ModLoaderInstallResult>;
   };
   onLaunchProgress: (cb: (p: LaunchProgress) => void) => () => void;
+  onImportProgress: (cb: (data: { progress: number; message: string }) => void) => () => void;
 }

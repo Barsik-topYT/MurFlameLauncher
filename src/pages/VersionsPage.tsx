@@ -1,10 +1,108 @@
 import { useEffect, useMemo, useState } from "react";
-import { Download, RefreshCw, Trash2, X, Package, Cloud, AlertTriangle } from "lucide-react";
+import { Download, RefreshCw, Trash2, Package, Cloud, AlertTriangle } from "lucide-react";
 import { useLauncherStore } from "../store/useLauncherStore";
 import { versionTypeLabel } from "../utils/versionLabels";
 import { LOADER_LABELS } from "../utils/instanceUtils";
+import { useLocale } from "../hooks/useLocale";
+
+// Парсинг снапшотов: формат "26w14a" -> 2026 год, 14 неделя
+function parseSnapshot(snapshot: string): { year: number; week: number; prerelease: string } | null {
+  const match = snapshot.match(/^(\d{2})w(\d{2})([a-z]?)$/);
+  if (match) {
+    const year = 2000 + parseInt(match[1], 10);
+    const week = parseInt(match[2], 10);
+    const prerelease = match[3] || "";
+    return { year, week, prerelease };
+  }
+  return null;
+}
+
+// Парсинг релизных версий: "1.20.4" -> [1, 20, 4]
+function parseRelease(version: string): number[] | null {
+  const match = version.match(/^(\d+)\.(\d+)(?:\.(\d+))?/);
+  if (match) {
+    return [parseInt(match[1], 10), parseInt(match[2], 10), match[3] ? parseInt(match[3], 10) : 0];
+  }
+  return null;
+}
+
+// Основная функция для получения числового значения "веса" версии (чем больше число, тем новее)
+function getVersionWeight(versionId: string, releaseTime?: string): number {
+  if (releaseTime) {
+    const date = new Date(releaseTime);
+    if (!isNaN(date.getTime())) {
+      return date.getTime() / 1000;
+    }
+  }
+
+  const lowerId = versionId.toLowerCase();
+  
+  const snapshot = parseSnapshot(lowerId);
+  if (snapshot) {
+    const letterWeight = snapshot.prerelease ? snapshot.prerelease.charCodeAt(0) - 96 : 0;
+    return snapshot.year * 100000 + snapshot.week * 100 + letterWeight;
+  }
+
+  const preMatch = lowerId.match(/(\d+\.\d+(?:\.\d+)?)-pre(\d+)/);
+  if (preMatch) {
+    const baseVersion = parseRelease(preMatch[1]);
+    const preNum = parseInt(preMatch[2], 10);
+    if (baseVersion) {
+      const baseWeight = baseVersion[0] * 1000000 + baseVersion[1] * 10000 + baseVersion[2] * 100;
+      return baseWeight + 50 + preNum;
+    }
+  }
+
+  const rcMatch = lowerId.match(/(\d+\.\d+(?:\.\d+)?)-rc(\d+)/);
+  if (rcMatch) {
+    const baseVersion = parseRelease(rcMatch[1]);
+    const rcNum = parseInt(rcMatch[2], 10);
+    if (baseVersion) {
+      const baseWeight = baseVersion[0] * 1000000 + baseVersion[1] * 10000 + baseVersion[2] * 100;
+      return baseWeight + 20 + rcNum;
+    }
+  }
+
+  const betaMatch = lowerId.match(/beta\s*(\d+\.\d+(?:\.\d+)?)/i);
+  if (betaMatch) {
+    const betaVer = parseRelease(betaMatch[1]);
+    if (betaVer) {
+      return 100000 + betaVer[0] * 10000 + betaVer[1] * 100 + betaVer[2];
+    }
+    return 50000;
+  }
+
+  const alphaMatch = lowerId.match(/alpha\s*(\d+\.\d+(?:\.\d+)?)/i);
+  if (alphaMatch) {
+    const alphaVer = parseRelease(alphaMatch[1]);
+    if (alphaVer) {
+      return 20000 + alphaVer[0] * 10000 + alphaVer[1] * 100 + alphaVer[2];
+    }
+    return 10000;
+  }
+
+  const release = parseRelease(lowerId);
+  if (release) {
+    return release[0] * 1000000 + release[1] * 10000 + release[2] * 100;
+  }
+
+  if (lowerId.includes("remastered") || lowerId.includes("unofficial")) {
+    return -1;
+  }
+
+  return 0;
+}
+
+function sortVersionsByDate<T extends { id: string; releaseTime?: string }>(versions: T[]): T[] {
+  return [...versions].sort((a, b) => {
+    const weightA = getVersionWeight(a.id, a.releaseTime);
+    const weightB = getVersionWeight(b.id, b.releaseTime);
+    return weightB - weightA;
+  });
+}
 
 export function VersionsPage() {
+  const { t } = useLocale();
   const {
     versions,
     selectedVersion,
@@ -15,9 +113,6 @@ export function VersionsPage() {
     settings,
     updateSettings,
     progress,
-    loading,
-    isDownloading,
-    cancelDownload,
   } = useLauncherStore();
 
   const [installing, setInstalling] = useState(false);
@@ -27,20 +122,28 @@ export function VersionsPage() {
 
   const versionFilter = settings?.versionFilter ?? "all";
 
-  // Разделяем версии
-  const installedVersions = useMemo(() => versions.filter(v => v.installed === true), [versions]);
-  const availableVersions = useMemo(() => versions.filter(v => v.installed !== true), [versions]);
+  const installedVersions = useMemo(() => 
+    sortVersionsByDate(versions.filter(v => v.installed === true)), 
+    [versions]
+  );
+  
+  const availableVersions = useMemo(() => 
+    sortVersionsByDate(versions.filter(v => v.installed !== true)), 
+    [versions]
+  );
 
-  // Неофициальные версии
-const unofficialVersions = useMemo(() => [
-  {
-    id: "alpha-1.2.3_03-remastered",
-    name: "Alpha 1.2.3_03 (remastered)",
-    description: "Страшная версия с секретами | Крипипаста",
-    type: "unofficial",
-    downloadUrl: "https://www.dropbox.com/scl/fi/xvfy0sffk0m45eycwn084/Minecraft.zip?rlkey=ezb6q2rupd7crno0x4y8s0bgi&st=5e946anx&dl=1"
-  }
-], []);
+  const unofficialVersions = useMemo(() => 
+    sortVersionsByDate([
+      {
+        id: "alpha-1.2.3_03-remastered",
+        name: "Alpha 1.2.3_03 (remastered)",
+        description: "Страшная версия с секретами | Крипипаста",
+        type: "unofficial",
+        downloadUrl: "https://www.dropbox.com/scl/fi/xvfy0sffk0m45eycwn084/Minecraft.zip?rlkey=ezb6q2rupd7crno0x4y8s0bgi&st=5e946anx&dl=1"
+      }
+    ]),
+    []
+  );
 
   const refreshVersions = async () => {
     setListLoading(true);
@@ -95,8 +198,6 @@ const unofficialVersions = useMemo(() => [
       setError((e as Error).message);
     } finally {
       setInstalling(false);
-      useLauncherStore.getState().setProgress(null);
-      useLauncherStore.getState().cancelDownload();
     }
   };
 
@@ -107,7 +208,7 @@ const unofficialVersions = useMemo(() => [
     try {
       await window.murflame.versions.installUnofficial?.(version.id, version.downloadUrl);
       await loadVersions();
-      setActiveTab("installed"); // Переключаем на установленные после установки
+      setActiveTab("installed");
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -117,7 +218,7 @@ const unofficialVersions = useMemo(() => [
 
   const handleDelete = async (id: string) => {
     if (!window.murflame) return;
-    if (!confirm(`Удалить версию ${id}?`)) return;
+    if (!confirm(t("versions.deleteConfirm")?.replace("{id}", id) || `Удалить версию ${id}?`)) return;
     setError(null);
     try {
       await window.murflame.versions.delete(id);
@@ -134,20 +235,19 @@ const unofficialVersions = useMemo(() => [
   return (
     <>
       <div className="page-header">
-        <h2>Версии Minecraft</h2>
-        <p>Управление установленными, доступными и неофициальными версиями</p>
+        <h2>{t("versions.title")}</h2>
+        <p>{t("versions.desc")}</p>
       </div>
 
       {error && <div className="alert alert-error">{error}</div>}
 
-      {/* Вкладки */}
       <div className="version-tabs">
         <button
           className={`version-tab ${activeTab === "installed" ? "active" : ""}`}
           onClick={() => setActiveTab("installed")}
         >
           <Package size={16} />
-          Установленные
+          {t("versions.installed")}
           {installedVersions.length > 0 && <span className="tab-count">{installedVersions.length}</span>}
         </button>
         <button
@@ -155,41 +255,39 @@ const unofficialVersions = useMemo(() => [
           onClick={() => setActiveTab("available")}
         >
           <Cloud size={16} />
-          Доступные
+          {t("versions.available")}
         </button>
         <button
           className={`version-tab ${activeTab === "unofficial" ? "active" : ""}`}
           onClick={() => setActiveTab("unofficial")}
         >
           <AlertTriangle size={16} />
-          Неофициальные
+          {t("versions.unofficial")}
         </button>
       </div>
 
-      {/* Поиск */}
       <div className="versions-toolbar">
         <input
           className="input"
           style={{ maxWidth: 280 }}
-          placeholder="Поиск версии..."
+          placeholder={t("versions.search")}
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
         />
         <button type="button" className="btn btn-secondary" onClick={refreshVersions} disabled={listLoading}>
           <RefreshCw size={16} />
-          Обновить
+          {t("versions.refresh")}
         </button>
       </div>
 
-      {/* Фильтр для доступных версий */}
       {activeTab === "available" && (
         <div className="version-filter-tabs" style={{ marginTop: 16 }}>
           {[
-            { id: "all", label: "Все" },
-            { id: "release", label: "Релизы" },
-            { id: "snapshot", label: "Снапшоты" },
-            { id: "old_beta", label: "Beta" },
-            { id: "old_alpha", label: "Alpha" },
+            { id: "all", label: t("versions.all") },
+            { id: "release", label: t("versions.release") },
+            { id: "snapshot", label: t("versions.snapshot") },
+            { id: "old_beta", label: t("versions.beta") },
+            { id: "old_alpha", label: t("versions.alpha") },
           ].map(({ id, label }) => (
             <button
               key={id}
@@ -203,7 +301,6 @@ const unofficialVersions = useMemo(() => [
         </div>
       )}
 
-      {/* Прогресс */}
       {progress && (
         <div style={{ marginBottom: 12 }}>
           <div className="progress-bar">
@@ -213,13 +310,12 @@ const unofficialVersions = useMemo(() => [
         </div>
       )}
 
-      {/* Списки версий */}
       <div className="versions-list">
         {activeTab === "installed" && (
           <>
             {filteredInstalled.length === 0 ? (
               <p style={{ gridColumn: "1 / -1", padding: 24, textAlign: "center", color: "var(--text-muted)" }}>
-                Нет установленных версий. Перейдите на вкладку "Доступные".
+                {t("versions.noInstalled")}
               </p>
             ) : (
               filteredInstalled.map((v) => (
@@ -234,7 +330,7 @@ const unofficialVersions = useMemo(() => [
                     </span>
                     <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                       <button className="btn btn-ghost version-install-btn" onClick={() => handleInstall(v.id)} disabled={installing}>
-                        <Download size={14} /> Переустановить
+                        <Download size={14} /> {t("versions.reinstall")}
                       </button>
                       <button className="btn btn-ghost version-install-btn" style={{ color: "var(--danger)" }} onClick={() => handleDelete(v.id)}>
                         <Trash2 size={14} />
@@ -251,7 +347,7 @@ const unofficialVersions = useMemo(() => [
           <>
             {filteredAvailable.length === 0 ? (
               <p style={{ gridColumn: "1 / -1", padding: 24, textAlign: "center", color: "var(--text-muted)" }}>
-                Версии не найдены.
+                {t("versions.noAvailable")}
               </p>
             ) : (
               filteredAvailable.map((v) => (
@@ -265,7 +361,7 @@ const unofficialVersions = useMemo(() => [
                       {versionTypeLabel(v.type)}
                     </span>
                     <button className="btn btn-primary version-install-btn" onClick={(e) => { e.stopPropagation(); handleInstall(v.id); }} disabled={installing}>
-                      <Download size={14} /> Установить
+                      <Download size={14} /> {t("versions.install")}
                     </button>
                   </div>
                 </div>
@@ -278,14 +374,14 @@ const unofficialVersions = useMemo(() => [
           <>
             {filteredUnofficial.length === 0 ? (
               <p style={{ gridColumn: "1 / -1", padding: 24, textAlign: "center", color: "var(--text-muted)" }}>
-                Неофициальные версии не найдены.
+                {t("versions.noUnofficial")}
               </p>
             ) : (
               filteredUnofficial.map((v) => (
                 <div key={v.id} className="version-card unofficial">
                   <div className="version-card-top">
                     <div className="id">{v.name}</div>
-                    <span className="version-type-badge unofficial-badge">⚠️ Неофициальная</span>
+                    <span className="version-type-badge unofficial-badge">⚠️ {t("versions.unofficial")}</span>
                   </div>
                   <div className="meta">
                     <div className="version-description">
@@ -299,7 +395,7 @@ const unofficialVersions = useMemo(() => [
                       onClick={() => handleInstallUnofficial(v)}
                       disabled={installing}
                     >
-                      <Download size={14} /> Установить
+                      <Download size={14} /> {t("versions.install")}
                     </button>
                   </div>
                 </div>
@@ -308,70 +404,6 @@ const unofficialVersions = useMemo(() => [
           </>
         )}
       </div>
-
-      <style>{`
-        .version-tabs { 
-          display: flex; 
-          gap: 8px; 
-          margin-bottom: 24px; 
-          border-bottom: 1px solid var(--border-color); 
-        }
-        .version-tab { 
-          display: flex; 
-          align-items: center; 
-          gap: 8px; 
-          padding: 10px 20px; 
-          background: none; 
-          border: none; 
-          font-size: 14px; 
-          color: var(--text-muted); 
-          cursor: pointer; 
-          border-bottom: 2px solid transparent; 
-        }
-        .version-tab.active { 
-          color: var(--accent); 
-          border-bottom-color: var(--accent); 
-        }
-        .tab-count { 
-          background: var(--bg-secondary); 
-          padding: 2px 8px; 
-          border-radius: 20px; 
-          font-size: 12px; 
-        }
-        .version-card.installed { 
-          border-left: 3px solid #10b981; 
-        }
-        .version-card.unofficial { 
-          border-left: 3px solid #f59e0b; 
-          background: rgba(245, 158, 11, 0.05);
-        }
-        .unofficial-badge {
-          background: #f59e0b;
-          color: #1a1a2e;
-        }
-        .version-description {
-          display: flex;
-          align-items: center;
-          flex-wrap: wrap;
-          gap: 8px;
-        }
-        .version-card .meta {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          margin-top: 12px;
-          gap: 10px;
-          font-size: 13px;
-          color: var(--text-muted);
-          flex-wrap: wrap;
-        }
-        .version-install-btn {
-          padding: 6px 12px !important;
-          font-size: 12px !important;
-          gap: 6px;
-          white-space: nowrap;
-        }
-      `}</style>
     </>
   );
 }

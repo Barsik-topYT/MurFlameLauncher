@@ -53,7 +53,7 @@ import {
 } from "./instances.js";
 import { runLaunchGame, killGameProcess, isGameRunning } from "./launchGame.js";
 
-import { 
+import {
   elyGetAuthUrl,
   elyExchangeCode,
   elyRefreshToken,
@@ -78,14 +78,14 @@ function getIconPath(): string {
     path.join(process.cwd(), 'build/icon.ico'),
     path.join(process.cwd(), 'icon.ico'),
   ];
-  
+
   for (const p of possiblePaths) {
     if (existsSync(p)) {
       console.log("[MurFlame] Found icon at:", p);
       return p;
     }
   }
-  
+
   console.warn("[MurFlame] No icon found, using fallback");
   return "";
 }
@@ -155,12 +155,12 @@ function resolveSettings(): LauncherSettings {
   }
   s.maxMemory = Math.max(1024, Math.min(s.maxMemory ?? DEFAULT_SETTINGS.maxMemory, 16384));
   s.minMemory = Math.max(256, Math.min(s.minMemory ?? DEFAULT_SETTINGS.minMemory, s.maxMemory));
-  
+
   globalThis.__launcherSettings = {
     minMemory: s.minMemory,
     maxMemory: s.maxMemory
   };
-  
+
   return s;
 }
 
@@ -169,7 +169,7 @@ async function createStartBat(instancePath: string, versionId: string) {
 cd /d "${instancePath}"
 ".murflame\\java\\java8\\win32\\x64\\bin\\java.exe" -Xmx1024M -Xms1024M -cp Minecraft.jar -Dorg.lwjgl.librarypath="%CD%/natives" -Dnet.java.games.input.librarypath="%CD%/natives" Start
 pause`;
-  
+
   const batPath = path.join(instancePath, "start.bat");
   await fs.writeFile(batPath, batContent, { encoding: 'utf-8' });
   console.log("[MurFlame] Created start.bat at:", batPath);
@@ -192,20 +192,20 @@ function resolvePreloadPath(): string {
 function createTray() {
   const iconPath = getIconPath();
   let icon = nativeImage.createFromPath(iconPath);
-  
+
   if (icon.isEmpty()) {
     console.warn('[MurFlame] Tray icon not found, using fallback');
     icon = nativeImage.createEmpty();
   }
-  
+
   const trayIcon = icon.resize({ width: 16, height: 16 });
-  
+
   tray = new Tray(trayIcon);
   tray.setToolTip('MurFlame Launcher');
-  
+
   const contextMenu = Menu.buildFromTemplate([
-    { 
-      label: 'Показать MurFlame', 
+    {
+      label: 'Показать MurFlame',
       click: () => {
         if (mainWindow) {
           mainWindow.show();
@@ -214,23 +214,23 @@ function createTray() {
         }
       }
     },
-    { 
-      label: 'Свернуть в трей', 
+    {
+      label: 'Свернуть в трей',
       click: () => {
         mainWindow?.hide();
       }
     },
     { type: 'separator' },
-    { 
-      label: 'Выход', 
+    {
+      label: 'Выход',
       click: () => {
         app.quit();
       }
     }
   ]);
-  
+
   tray.setContextMenu(contextMenu);
-  
+
   tray.on('click', () => {
     if (mainWindow) {
       if (mainWindow.isVisible()) {
@@ -242,7 +242,7 @@ function createTray() {
       }
     }
   });
-  
+
   tray.on('double-click', () => {
     if (mainWindow) {
       mainWindow.show();
@@ -254,16 +254,16 @@ function createTray() {
 
 function createWindow() {
   const settings = resolveSettings();
-  
+
   const iconPath = getIconPath();
   const windowIcon = nativeImage.createFromPath(iconPath);
-  
+
   mainWindow = new BrowserWindow({
     width: settings.windowWidth,
     height: settings.windowHeight,
     minWidth: 960,
     minHeight: 600,
-    frame: false, 
+    frame: false,
     transparent: false,
     backgroundColor: "#0d0d12",
     show: false,
@@ -293,10 +293,10 @@ function createWindow() {
   mainWindow.once('ready-to-show', () => {
     mainWindow?.show();
   });
-  
-setTimeout(() => {
-  checkForUpdates(mainWindow!);
-}, 3000);
+
+  setTimeout(() => {
+    checkForUpdates(mainWindow!);
+  }, 3000);
 
   if (isDev && devServerUrl) {
     mainWindow.loadURL(devServerUrl);
@@ -327,12 +327,12 @@ async function findJavaInstallations(): Promise<JavaInfo[]> {
   ].filter(Boolean) as string[];
 
   const vendors = ["Java", "Eclipse Adoptium", "Microsoft", "Zulu", "Amazon Corretto", "BellSoft"];
-  
+
   for (const pf of programFiles) {
     for (const vendor of vendors) {
       const base = path.join(pf, vendor);
       if (!existsSync(base)) continue;
-      
+
       try {
         const versions = await fs.readdir(base);
         for (const v of versions) {
@@ -379,30 +379,30 @@ async function fetchManifest(): Promise<MojangManifest> {
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 10000);
-      
+
       const res = await fetch(url, {
         headers: { Accept: "application/json", "User-Agent": "MurFlame-Launcher/1.0" },
         signal: controller.signal
       });
       clearTimeout(timeoutId);
-      
+
       if (!res.ok) {
         lastError = `${url}: HTTP ${res.status}`;
         continue;
       }
-      
+
       const text = await res.text();
       if (text.trimStart().startsWith("<") || text.includes("HTTP/1")) {
         lastError = `${url}: получен не JSON`;
         continue;
       }
-      
+
       const manifest = JSON.parse(text) as MojangManifest;
       if (!manifest.versions?.length) {
         lastError = `${url}: пустой список версий`;
         continue;
       }
-      
+
       manifestCache.set('manifest', manifest);
       return manifest;
     } catch (e) {
@@ -434,7 +434,7 @@ async function getVersions(): Promise<VersionInfo[]> {
   const alphaVersionId = "alpha-1.2.3_03-remastered";
   const alphaVersionDir = path.join(settings.gameDir, "versions", alphaVersionId);
   const alphaJsonPath = path.join(alphaVersionDir, `${alphaVersionId}.json`);
-  
+
   if (existsSync(alphaJsonPath) && !installedVersions.some(v => v.id === alphaVersionId)) {
     installedVersions.push({
       id: alphaVersionId,
@@ -446,12 +446,12 @@ async function getVersions(): Promise<VersionInfo[]> {
 
   // Получаем доступные версии из манифеста с учётом фильтра
   let availableVersions = manifest.versions;
-  
+
   // Фильтруем по типу (release, snapshot, old_beta, old_alpha)
   if (filter !== "all") {
     availableVersions = availableVersions.filter((v) => v.type === filter);
   }
-  
+
   const fromManifest = availableVersions.map((v) => ({
     id: v.id,
     type: v.type,
@@ -460,9 +460,9 @@ async function getVersions(): Promise<VersionInfo[]> {
 
   const manifestIds = new Set(fromManifest.map((v) => v.id));
   const extraInstalled = installedVersions.filter((v) => !manifestIds.has(v.id));
-  
+
   const allVersions = [...extraInstalled, ...fromManifest];
-  
+
   return allVersions.sort((a, b) => b.id.localeCompare(a.id));
 }
 
@@ -490,28 +490,28 @@ function upsertInstance(instance: GameInstance): GameInstance {
 
 async function downloadFile(url: string, dest: string, onProgress?: (p: number) => void) {
   await ensureDir(path.dirname(dest));
-  
+
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 30000);
-  
+
   try {
     const res = await fetch(url, { signal: controller.signal });
     clearTimeout(timeoutId);
-    
+
     if (!res.ok) throw new Error(`Download failed: ${url}`);
-    
+
     const total = Number(res.headers.get("content-length") || 0);
     const reader = res.body?.getReader();
-    
+
     if (!reader) {
       const buf = Buffer.from(await res.arrayBuffer());
       await fs.writeFile(dest, buf);
       return;
     }
-    
+
     const chunks: Uint8Array[] = [];
     let received = 0;
-    
+
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
@@ -519,7 +519,7 @@ async function downloadFile(url: string, dest: string, onProgress?: (p: number) 
       received += value.length;
       if (total && onProgress) onProgress(Math.round((received / total) * 100));
     }
-    
+
     const buf = Buffer.concat(chunks);
     await fs.writeFile(dest, buf);
   } catch (error) {
@@ -551,7 +551,7 @@ interface LibraryEntry {
 function libApplies(lib: LibraryEntry): boolean {
   if (!lib.rules) return true;
   const osName = process.platform === "win32" ? "windows" : process.platform === "darwin" ? "osx" : "linux";
-  
+
   for (const rule of lib.rules) {
     if (rule.os?.name) {
       if (rule.action === "allow" && rule.os.name !== osName) return false;
@@ -586,7 +586,7 @@ async function installVersion(versionId: string) {
 
   const versionRes = await fetch(entry.url);
   const versionJson = (await versionRes.json()) as VersionJson;
-  
+
   versionCache.set(versionId, versionJson);
 
   const versionDir = path.join(settings.gameDir, "versions", versionId);
@@ -613,14 +613,14 @@ async function installVersion(versionId: string) {
 
   await Promise.all(libs.map(async (lib, idx) => {
     const pct = 40 + (idx / libs.length) * 35;
-    
+
     if (lib.downloads?.artifact) {
       const dest = path.join(libsDir, lib.downloads.artifact.path);
       if (!existsSync(dest)) {
         await downloadFile(lib.downloads.artifact.url, dest);
       }
     }
-    
+
     if (lib.natives && lib.downloads?.classifiers) {
       const nativeKey = lib.natives[osKey]?.replace(
         "${arch}",
@@ -634,7 +634,7 @@ async function installVersion(versionId: string) {
         }
       }
     }
-    
+
     if (lib.name && !lib.downloads?.artifact) {
       const rel = mavenToPath(lib.name);
       const dest = path.join(libsDir, rel);
@@ -645,7 +645,7 @@ async function installVersion(versionId: string) {
         } catch { /* optional lib */ }
       }
     }
-    
+
     send("launch:progress", { stage: "libraries", percent: pct, message: `Библиотеки ${idx + 1}/${libs.length}` } as LaunchProgress);
   }));
 
@@ -665,7 +665,7 @@ async function installVersion(versionId: string) {
   };
 
   const objects = Object.entries(indexContent.objects);
-  
+
   const chunkSize = 50;
   for (let i = 0; i < objects.length; i += chunkSize) {
     const chunk = objects.slice(i, i + chunkSize);
@@ -680,7 +680,7 @@ async function installVersion(versionId: string) {
         } catch { /* skip */ }
       }
     }));
-    
+
     send("launch:progress", {
       stage: "assets",
       percent: 78 + ((i + chunk.length) / objects.length) * 18,
@@ -717,13 +717,13 @@ async function refreshMicrosoftToken(account: Account): Promise<Account> {
     grant_type: "refresh_token",
     redirect_uri: MS_REDIRECT_URI,
   });
-  
+
   const res = await fetch("https://login.live.com/oauth20_token.srf", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body,
   });
-  
+
   if (!res.ok) return account;
 
   const token = (await res.json()) as {
@@ -901,9 +901,9 @@ function resolveJavaExecutable(javaPath: string): string {
 
 async function launchGame(versionId: string, instancePath: string, loader?: string) {
   console.log("[MurFlame] launchGame called with:", { versionId, instancePath, loader });
-  
+
   if (!versionId) throw new Error("Не передана версия для запуска");
-  
+
   const settings = resolveSettings();
   const accountId = store.get("activeAccountId");
   const accounts = store.get("accounts");
@@ -958,81 +958,217 @@ async function launchGame(versionId: string, instancePath: string, loader?: stri
   if (settings.closeOnLaunch) mainWindow?.minimize();
 }
 
+// ==================== MODPACK IMPORT HANDLERS ====================
+
+ipcMain.handle("instances:pickZip", async () => {
+  const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow!, {
+    title: "Выберите архив модпака",
+    properties: ["openFile"],
+    filters: [
+      { name: "Архивы модпаков", extensions: ["zip", "mrpack"] },
+      { name: "Все файлы", extensions: ["*"] },
+    ],
+  });
+  if (canceled || filePaths.length === 0) return null;
+  return filePaths[0];
+});
+
+ipcMain.handle("instances:readModpackMetadata", async (_e, zipPath: string) => {
+  const AdmZip = await import("adm-zip").then(m => m.default);
+  const zip = new AdmZip(zipPath);
+
+  // Проверяем Modrinth .mrpack
+  const manifestEntry = zip.getEntry("modrinth.index.json");
+  if (manifestEntry) {
+    const manifest = JSON.parse(zip.readAsText(manifestEntry));
+    return {
+      name: manifest.name || "Unknown Modpack",
+      version: manifest.version,
+      author: manifest.author,
+      description: manifest.description,
+      mcVersion: manifest.dependencies?.minecraft,
+      loader: manifest.dependencies?.["fabric-loader"]
+        ? "fabric"
+        : manifest.dependencies?.forge
+          ? "forge"
+          : manifest.dependencies?.quilt
+            ? "quilt"
+            : "vanilla",
+      loaderVersion: manifest.dependencies?.["fabric-loader"] ||
+        manifest.dependencies?.forge ||
+        manifest.dependencies?.quilt ||
+        null,
+      type: "modrinth",
+    };
+  }
+
+  // Проверяем CurseForge (обычный ZIP с manifest.json)
+  const curseManifest = zip.getEntry("manifest.json");
+  if (curseManifest) {
+    const manifest = JSON.parse(zip.readAsText(curseManifest));
+    return {
+      name: manifest.name || "CurseForge Modpack",
+      version: manifest.version,
+      author: manifest.author,
+      description: manifest.description,
+      mcVersion: manifest.minecraft?.version,
+      loader: manifest.minecraft?.modLoaders?.[0]?.id?.split("-")[0] || "forge",
+      loaderVersion: manifest.minecraft?.modLoaders?.[0]?.id,
+      type: "curseforge",
+    };
+  }
+
+  // Обычный ZIP
+  return {
+    name: path.basename(zipPath, ".zip"),
+    version: null,
+    author: null,
+    description: null,
+    mcVersion: null,
+    loader: "vanilla",
+    loaderVersion: null,
+    type: "zip",
+  };
+});
+
+ipcMain.handle("instances:importModpack", async (_e, zipPath: string, instanceName: string) => {
+  const id = randomUUID();
+  const settings = resolveSettings();
+  const instancesDir = path.join(settings.gameDir, "instances");
+  const instanceFolder = path.join(instancesDir, sanitizeFolderName(instanceName) + "_" + id);
+
+  await fs.mkdir(instanceFolder, { recursive: true });
+
+  // Распаковываем архив
+  const AdmZip = await import("adm-zip").then(m => m.default);
+  const zip = new AdmZip(zipPath);
+  zip.extractAllTo(instanceFolder, true);
+
+  // Сохраняем манифест об импорте
+  const manifest = {
+    source: "imported-modpack",
+    originalPath: zipPath,
+    importedAt: Date.now(),
+    originalName: instanceName,
+  };
+  await fs.writeFile(
+    path.join(instanceFolder, "modpack.json"),
+    JSON.stringify(manifest, null, 2)
+  );
+
+  const newInstance: GameInstance = {
+    id,
+    name: instanceName,
+    versionId: "",
+    mcVersion: "",
+    loader: "vanilla",
+    icon: "package",
+    createdAt: Date.now(),
+    playTimeMs: 0,
+  };
+
+  upsertInstance(newInstance);
+  return newInstance;
+});
+
+ipcMain.handle("instances:duplicate", async (_e, id: string) => {
+  const instances = getInstances();
+  const original = instances.find((i) => i.id === id);
+  if (!original) throw new Error("Instance not found");
+
+  const newId = randomUUID();
+  const newInstance: GameInstance = {
+    ...original,
+    id: newId,
+    name: `${original.name} (копия)`,
+    createdAt: Date.now(),
+    playTimeMs: 0,
+  };
+  upsertInstance(newInstance);
+
+  const settings = resolveSettings();
+  const originalPath = path.join(settings.gameDir, "instances", id);
+  const newPath = path.join(settings.gameDir, "instances", newId);
+  await fs.cp(originalPath, newPath, { recursive: true });
+
+  return newInstance;
+});
+
 function registerIpc() {
   ipcMain.handle("settings:get", () => {
     const settings = resolveSettings();
-  
-  // Пасхалка: 1% шанс на "Барсфейс"
+
+    // Пасхалка: 1% шанс на "Барсфейс"
     const random = Math.random();
     if (random < 0.01) {
-    return { ...settings, easterEgg: true };
+      return { ...settings, easterEgg: true };
     }
-   return settings;
+    return settings;
   });
-  
-ipcMain.handle("updater:check", async () => {
-  if (mainWindow) {
-    await checkForUpdates(mainWindow);
-  }
-});
 
-ipcMain.on('window:minimize', () => {
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.minimize();
-  }
-});
-
-ipcMain.on('window:maximize', () => {
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    if (mainWindow.isMaximized()) {
-      mainWindow.unmaximize();
-    } else {
-      mainWindow.maximize();
+  ipcMain.handle("updater:check", async () => {
+    if (mainWindow) {
+      await checkForUpdates(mainWindow);
     }
-  }
-});
+  });
 
-ipcMain.on('window:close', () => {
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    const settings = resolveSettings();
-    if (settings.closeToTray) {
-      mainWindow.hide();
-    } else {
-      mainWindow.close();
+  ipcMain.on('window:minimize', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.minimize();
     }
-  }
-});
+  });
 
-ipcMain.on('window:show', () => {
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.show();
-    if (mainWindow.isMinimized()) mainWindow.restore();
-    mainWindow.focus();
-  }
-});
+  ipcMain.on('window:maximize', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      if (mainWindow.isMaximized()) {
+        mainWindow.unmaximize();
+      } else {
+        mainWindow.maximize();
+      }
+    }
+  });
 
-ipcMain.handle("updater:getVersion", () => {
-  return getCurrentVersion();
-});
-  
+  ipcMain.on('window:close', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      const settings = resolveSettings();
+      if (settings.closeToTray) {
+        mainWindow.hide();
+      } else {
+        mainWindow.close();
+      }
+    }
+  });
+
+  ipcMain.on('window:show', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.show();
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
+    }
+  });
+
+  ipcMain.handle("updater:getVersion", () => {
+    return getCurrentVersion();
+  });
+
   ipcMain.handle("settings:set", (_e, partial: Partial<LauncherSettings>) => {
     const current = resolveSettings();
     const next = { ...current, ...partial };
-    
+
     if (next.maxMemory) {
       next.maxMemory = Math.max(1024, Math.min(next.maxMemory, 16384));
     }
     if (next.minMemory) {
       next.minMemory = Math.max(256, Math.min(next.minMemory, next.maxMemory || 8192));
     }
-    
+
     store.set("settings", next);
-    
+
     globalThis.__launcherSettings = {
       minMemory: next.minMemory,
       maxMemory: next.maxMemory
     };
-    
+
     return next;
   });
 
@@ -1060,7 +1196,7 @@ ipcMain.handle("updater:getVersion", () => {
   });
 
   ipcMain.handle("java:list", () => findJavaInstallations());
-  
+
   // ========== ОБРАБОТЧИКИ ВЕРСИЙ ==========
   ipcMain.handle("versions:list", async () => {
     try {
@@ -1070,9 +1206,9 @@ ipcMain.handle("updater:getVersion", () => {
       throw e;
     }
   });
-  
+
   ipcMain.handle("versions:install", (_e, id: string) => installVersion(id));
-  
+
   ipcMain.handle("versions:delete", async (_e, id: string) => {
     const settings = resolveSettings();
     const versionDir = path.join(settings.gameDir, "versions", id);
@@ -1081,7 +1217,7 @@ ipcMain.handle("updater:getVersion", () => {
       versionCache.delete(id);
     }
   });
-  
+
   ipcMain.handle("versions:last", () => store.get("lastVersion"));
 
   // ========== ОБРАБОТЧИКИ АККАУНТОВ ==========
@@ -1123,17 +1259,17 @@ ipcMain.handle("updater:getVersion", () => {
     store.set("accounts", out);
     return out;
   });
-  
+
   ipcMain.handle("accounts:active", () => {
     const id = store.get("activeAccountId");
     return store.get("accounts").find((a) => a.id === id) || null;
   });
-  
+
   ipcMain.handle("accounts:setActive", (_e, id: string) => {
     store.set("activeAccountId", id);
     return store.get("accounts").find((a) => a.id === id);
   });
-  
+
   ipcMain.handle("accounts:remove", (_e, id: string) => {
     const accounts = store.get("accounts").filter((a) => a.id !== id);
     store.set("accounts", accounts);
@@ -1142,218 +1278,218 @@ ipcMain.handle("updater:getVersion", () => {
     }
     return accounts;
   });
-  
+
   ipcMain.handle("accounts:offline", (_e, username: string) => offlineLogin(username));
   ipcMain.handle("accounts:microsoftLogin", () => microsoftLoginInteractive());
   ipcMain.handle("accounts:microsoft", (_e, code: string) => microsoftLoginWithCode(code));
-  
+
   // ========== ОБРАБОТЧИК ELY.BY  ==========
-ipcMain.handle("accounts:elyLogin", async () => {
-  return new Promise(async (resolve, reject) => {
-    // 1. Запускаем локальный сервер для перехвата кода
-    const server = http.createServer();
-    const port = 23423;
-    let resolved = false;
+  ipcMain.handle("accounts:elyLogin", async () => {
+    return new Promise(async (resolve, reject) => {
+      // 1. Запускаем локальный сервер для перехвата кода
+      const server = http.createServer();
+      const port = 23423;
+      let resolved = false;
 
-    server.listen(port, '127.0.0.1', () => {
-      console.log(`[MurFlame] OAuth callback server listening on port ${port}`);
-    });
+      server.listen(port, '127.0.0.1', () => {
+        console.log(`[MurFlame] OAuth callback server listening on port ${port}`);
+      });
 
-    server.on('request', async (req, res) => {
-      const url = new URL(req.url || '', `http://localhost:${port}`);
-      const code = url.searchParams.get('code');
-      const error = url.searchParams.get('error');
+      server.on('request', async (req, res) => {
+        const url = new URL(req.url || '', `http://localhost:${port}`);
+        const code = url.searchParams.get('code');
+        const error = url.searchParams.get('error');
 
-      if (code && !resolved) {
-        resolved = true;
-        res.writeHead(200, { 'Content-Type': 'text/html' });
-        res.end('<html><body><h1>Успешный вход!</h1><p>Можете закрыть это окно.</p></body></html>');
-        
-        // Закрываем сервер и окно браузера
-        server.close();
-        authWindow.close();
-        
-        try {
-          const profile = await elyExchangeCode(code);
-          const account: Account = {
-            id: profile.id,
-            type: "ely",
-            username: profile.username,
-            uuid: profile.id,
-            accessToken: profile.accessToken,
-            refreshToken: profile.refreshToken,
-            expiresAt: profile.expiresAt,
-            skinUrl: await elyGetSkinUrl(profile.id),
-            capeUrl: await elyGetCapeUrl(profile.id),
-          };
-          
-          let accounts = store.get("accounts") as Account[];
-          const activeAccountId = store.get("activeAccountId") as string | null;
-          const activeAccount = activeAccountId ? accounts.find(a => a.id === activeAccountId) : null;
-          
-          if (activeAccount && activeAccount.type === "offline") {
-            accounts = accounts.map(a => a.id === activeAccountId ? account : a);
-            store.set("accounts", accounts);
-            resolve(account);
-          } else {
-            resolve(saveAccount(account));
+        if (code && !resolved) {
+          resolved = true;
+          res.writeHead(200, { 'Content-Type': 'text/html' });
+          res.end('<html><body><h1>Успешный вход!</h1><p>Можете закрыть это окно.</p></body></html>');
+
+          // Закрываем сервер и окно браузера
+          server.close();
+          authWindow.close();
+
+          try {
+            const profile = await elyExchangeCode(code);
+            const account: Account = {
+              id: profile.id,
+              type: "ely",
+              username: profile.username,
+              uuid: profile.id,
+              accessToken: profile.accessToken,
+              refreshToken: profile.refreshToken,
+              expiresAt: profile.expiresAt,
+              skinUrl: await elyGetSkinUrl(profile.id),
+              capeUrl: await elyGetCapeUrl(profile.id),
+            };
+
+            let accounts = store.get("accounts") as Account[];
+            const activeAccountId = store.get("activeAccountId") as string | null;
+            const activeAccount = activeAccountId ? accounts.find(a => a.id === activeAccountId) : null;
+
+            if (activeAccount && activeAccount.type === "offline") {
+              accounts = accounts.map(a => a.id === activeAccountId ? account : a);
+              store.set("accounts", accounts);
+              resolve(account);
+            } else {
+              resolve(saveAccount(account));
+            }
+          } catch (e) {
+            reject(e);
           }
-        } catch (e) {
+        } else if (error && !resolved) {
+          resolved = true;
+          res.writeHead(400, { 'Content-Type': 'text/html' });
+          res.end(`<html><body><h1>Ошибка входа</h1><p>${error}</p></body></html>`);
+          server.close();
+          authWindow.close();
+          reject(new Error(error));
+        } else {
+          res.writeHead(404);
+          res.end();
+        }
+      });
+
+      server.on('error', (err) => {
+        console.error('[MurFlame] OAuth server error:', err);
+        if (!resolved) reject(err);
+      });
+
+      // 2. Открываем окно авторизации
+      const authUrl = await elyGetAuthUrl(port); // нужно передать порт
+      const authWindow = new BrowserWindow({
+        width: 520,
+        height: 720,
+        parent: mainWindow ?? undefined,
+        modal: Boolean(mainWindow),
+        title: "Вход в ely.by",
+        autoHideMenuBar: true,
+        webPreferences: {
+          nodeIntegration: false,
+          contextIsolation: true,
+        },
+      });
+
+      authWindow.on('closed', () => {
+        if (!resolved) {
+          server.close();
+          reject(new Error("Вход отменён"));
+        }
+      });
+
+      authWindow.loadURL(authUrl).catch((e) => {
+        if (!resolved) {
+          server.close();
           reject(e);
         }
-      } else if (error && !resolved) {
-        resolved = true;
-        res.writeHead(400, { 'Content-Type': 'text/html' });
-        res.end(`<html><body><h1>Ошибка входа</h1><p>${error}</p></body></html>`);
-        server.close();
-        authWindow.close();
-        reject(new Error(error));
-      } else {
-        res.writeHead(404);
-        res.end();
-      }
-    });
-
-    server.on('error', (err) => {
-      console.error('[MurFlame] OAuth server error:', err);
-      if (!resolved) reject(err);
-    });
-
-    // 2. Открываем окно авторизации
-    const authUrl = await elyGetAuthUrl(port); // нужно передать порт
-    const authWindow = new BrowserWindow({
-      width: 520,
-      height: 720,
-      parent: mainWindow ?? undefined,
-      modal: Boolean(mainWindow),
-      title: "Вход в ely.by",
-      autoHideMenuBar: true,
-      webPreferences: {
-        nodeIntegration: false,
-        contextIsolation: true,
-      },
-    });
-
-    authWindow.on('closed', () => {
-      if (!resolved) {
-        server.close();
-        reject(new Error("Вход отменён"));
-      }
-    });
-
-    authWindow.loadURL(authUrl).catch((e) => {
-      if (!resolved) {
-        server.close();
-        reject(e);
-      }
+      });
     });
   });
-});
 
   // ========== ОСТАЛЬНЫЕ ОБРАБОТЧИКИ (game, instances, modrinth, curseforge, mods, skin и т.д.) ==========
-ipcMain.handle("versions:installUnofficial", async (_e, versionId: string, downloadUrl: string) => {
-  const settings = resolveSettings();
-  const versionDir = path.join(settings.gameDir, "versions", versionId);
-  const zipPath = path.join(settings.gameDir, "temp_unofficial.zip");
-  
-  send("launch:progress", { stage: "fetch", percent: 10, message: "Скачивание неофициальной версии..." });
-  await downloadFile(downloadUrl, zipPath);
-  
-  send("launch:progress", { stage: "extract", percent: 50, message: "Распаковка..." });
-  
-  if (existsSync(versionDir)) {
-    await fs.rm(versionDir, { recursive: true, force: true });
-  }
-  await fs.mkdir(versionDir, { recursive: true });
-  
-  const AdmZip = (await import("adm-zip")).default;
-  const zip = new AdmZip(zipPath);
-  zip.extractAllTo(versionDir, true);
-  
-  // Ищем jar файл
-  const files = await fs.readdir(versionDir);
-  let jarFile = files.find(f => f === "Minecraft.jar" || f.endsWith(".jar"));
-  
-  if (!jarFile) {
-    // Ищем в подпапках
-    for (const file of files) {
-      const stat = await fs.stat(path.join(versionDir, file));
-      if (stat.isDirectory()) {
-        const subFiles = await fs.readdir(path.join(versionDir, file));
-        const subJar = subFiles.find(f => f === "Minecraft.jar" || f.endsWith(".jar"));
-        if (subJar) {
-          jarFile = subJar;
-          await fs.rename(path.join(versionDir, file, subJar), path.join(versionDir, subJar));
-          break;
+  ipcMain.handle("versions:installUnofficial", async (_e, versionId: string, downloadUrl: string) => {
+    const settings = resolveSettings();
+    const versionDir = path.join(settings.gameDir, "versions", versionId);
+    const zipPath = path.join(settings.gameDir, "temp_unofficial.zip");
+
+    send("launch:progress", { stage: "fetch", percent: 10, message: "Скачивание неофициальной версии..." });
+    await downloadFile(downloadUrl, zipPath);
+
+    send("launch:progress", { stage: "extract", percent: 50, message: "Распаковка..." });
+
+    if (existsSync(versionDir)) {
+      await fs.rm(versionDir, { recursive: true, force: true });
+    }
+    await fs.mkdir(versionDir, { recursive: true });
+
+    const AdmZip = await import("adm-zip").then(m => m.default);
+    const zip = new AdmZip(zipPath);
+    zip.extractAllTo(versionDir, true);
+
+    // Ищем jar файл
+    const files = await fs.readdir(versionDir);
+    let jarFile = files.find(f => f === "Minecraft.jar" || f.endsWith(".jar"));
+
+    if (!jarFile) {
+      // Ищем в подпапках
+      for (const file of files) {
+        const stat = await fs.stat(path.join(versionDir, file));
+        if (stat.isDirectory()) {
+          const subFiles = await fs.readdir(path.join(versionDir, file));
+          const subJar = subFiles.find(f => f === "Minecraft.jar" || f.endsWith(".jar"));
+          if (subJar) {
+            jarFile = subJar;
+            await fs.rename(path.join(versionDir, file, subJar), path.join(versionDir, subJar));
+            break;
+          }
         }
       }
     }
-  }
-  
-  if (!jarFile) {
-    throw new Error("Не найден Minecraft.jar в архиве");
-  }
-  
-  // Переименовываем в Minecraft.jar
-  const targetJar = path.join(versionDir, "Minecraft.jar");
-  if (path.join(versionDir, jarFile) !== targetJar) {
-    await fs.rename(path.join(versionDir, jarFile), targetJar);
-  }
-  
-  // ✅✅✅ СОЗДАЁМ JSON ✅✅✅
-  const versionJsonPath = path.join(versionDir, `${versionId}.json`);
-  const versionJson = {
-    id: versionId,
-    mainClass: "net.minecraft.client.main.Main",
-    minecraftArguments: "--username ${auth_player_name} --version ${version_name} --gameDir ${game_directory} --assetsDir ${assets_root}",
-    libraries: []
-  };
-  await fs.writeFile(versionJsonPath, JSON.stringify(versionJson, null, 2));
-  
-  console.log("[MurFlame] JSON created at:", versionJsonPath);
-  console.log("[MurFlame] JSON exists:", existsSync(versionJsonPath));
-  
-  // Создаём папку для ассетов
-  const assetsIndexDir = path.join(settings.gameDir, "assets", "indexes");
-  const legacyAssetsPath = path.join(assetsIndexDir, "legacy.json");
-  if (!existsSync(legacyAssetsPath)) {
-    await fs.mkdir(assetsIndexDir, { recursive: true });
-    await fs.writeFile(legacyAssetsPath, JSON.stringify({ objects: {} }, null, 2));
-  }
-  
-  await fs.unlink(zipPath);
-  send("launch:progress", { stage: "done", percent: 100, message: "Версия установлена!" });
-  
-  return true;
-});
 
-  ipcMain.handle("game:launch", (_e, versionId: string, instancePath: string, loader?: string) => 
+    if (!jarFile) {
+      throw new Error("Не найден Minecraft.jar в архиве");
+    }
+
+    // Переименовываем в Minecraft.jar
+    const targetJar = path.join(versionDir, "Minecraft.jar");
+    if (path.join(versionDir, jarFile) !== targetJar) {
+      await fs.rename(path.join(versionDir, jarFile), targetJar);
+    }
+
+    // ✅✅✅ СОЗДАЁМ JSON ✅✅✅
+    const versionJsonPath = path.join(versionDir, `${versionId}.json`);
+    const versionJson = {
+      id: versionId,
+      mainClass: "net.minecraft.client.main.Main",
+      minecraftArguments: "--username ${auth_player_name} --version ${version_name} --gameDir ${game_directory} --assetsDir ${assets_root}",
+      libraries: []
+    };
+    await fs.writeFile(versionJsonPath, JSON.stringify(versionJson, null, 2));
+
+    console.log("[MurFlame] JSON created at:", versionJsonPath);
+    console.log("[MurFlame] JSON exists:", existsSync(versionJsonPath));
+
+    // Создаём папку для ассетов
+    const assetsIndexDir = path.join(settings.gameDir, "assets", "indexes");
+    const legacyAssetsPath = path.join(assetsIndexDir, "legacy.json");
+    if (!existsSync(legacyAssetsPath)) {
+      await fs.mkdir(assetsIndexDir, { recursive: true });
+      await fs.writeFile(legacyAssetsPath, JSON.stringify({ objects: {} }, null, 2));
+    }
+
+    await fs.unlink(zipPath);
+    send("launch:progress", { stage: "done", percent: 100, message: "Версия установлена!" });
+
+    return true;
+  });
+
+  ipcMain.handle("game:launch", (_e, versionId: string, instancePath: string, loader?: string) =>
     launchGame(versionId, instancePath, loader)
   );
-  
+
   ipcMain.handle("game:isRunning", () => isGameRunning());
   ipcMain.handle("game:kill", () => killGameProcess());
-  
+
   ipcMain.handle("instances:list", () => getInstances());
   ipcMain.handle("instances:selected", () => store.get("selectedInstanceId"));
-  
+
   ipcMain.handle("instances:setSelected", (_e, id: string | null) => {
     store.set("selectedInstanceId", id);
     return id;
   });
-  
- ipcMain.handle("skin:previewCape", async (_e, capeUrl: string) => {
-  // 3D просмотр временно отключён
-  console.log("[MurFlame] Cape preview disabled");
-  // const { showCapePreview } = await import("./capeViewer.js");
-  // await showCapePreview(capeUrl);
-});
-  
+
+  ipcMain.handle("skin:previewCape", async (_e, capeUrl: string) => {
+    // 3D просмотр временно отключён
+    console.log("[MurFlame] Cape preview disabled");
+    // const { showCapePreview } = await import("./capeViewer.js");
+    // await showCapePreview(capeUrl);
+  });
+
   ipcMain.handle("instances:installedVersions", () => {
     const settings = resolveSettings();
     return listInstalledVersionIds(settings.gameDir);
   });
-  
+
   ipcMain.handle("instances:create", async (_e, data: {
     name: string;
     versionId: string;
@@ -1368,7 +1504,7 @@ ipcMain.handle("versions:installUnofficial", async (_e, versionId: string, downl
 
     if (data.loader && data.loader !== "vanilla") {
       const baseVersion = data.versionId.match(/^(\d+\.\d+(?:\.\d+)?)/)?.[1] || data.versionId;
-      
+
       const vanillaVersionDir = path.join(settings.gameDir, "versions", baseVersion);
       if (!existsSync(vanillaVersionDir)) {
         send("launch:progress", { stage: "vanilla", percent: 10, message: "Установка ванильной версии..." } as LaunchProgress);
@@ -1376,7 +1512,7 @@ ipcMain.handle("versions:installUnofficial", async (_e, versionId: string, downl
       }
 
       send("launch:progress", { stage: "modloader", percent: 30, message: `Установка ${data.loader}...` } as LaunchProgress);
-      
+
       let versionId: string;
       switch (data.loader) {
         case "forge":
@@ -1385,7 +1521,7 @@ ipcMain.handle("versions:installUnofficial", async (_e, versionId: string, downl
           if (!forgeResponse.ok) throw new Error(`Не удалось получить список Forge: ${forgeResponse.status}`);
           const forgeVersions = await forgeResponse.json();
           if (!forgeVersions?.length) throw new Error(`Forge не поддерживает Minecraft ${baseVersion}`);
-          
+
           let selectedForge = forgeVersions[0];
           for (const version of forgeVersions) {
             const verStr = typeof version === 'string' ? version : version.version;
@@ -1397,12 +1533,12 @@ ipcMain.handle("versions:installUnofficial", async (_e, versionId: string, downl
               selectedForge = version;
             }
           }
-          
+
           const forgeVer = typeof selectedForge === 'string' ? selectedForge : selectedForge.version;
           const forgeVersionId = `${baseVersion}-forge-${forgeVer}`;
-          
+
           send("launch:progress", { stage: "modloader", percent: 50, message: `Установка Forge ${forgeVer}...` } as LaunchProgress);
-          
+
           await installForge(
             {
               mcversion: baseVersion,
@@ -1417,7 +1553,7 @@ ipcMain.handle("versions:installUnofficial", async (_e, versionId: string, downl
           versionId = forgeVersionId;
           console.log(`[MurFlame] Forge installed: ${versionId}`);
           break;
-          
+
         case "fabric":
           send("launch:progress", { stage: "modloader", percent: 35, message: "Установка Fabric..." });
           const fabricApiUrl = `https://meta.fabricmc.net/v2/versions/loader/${baseVersion}`;
@@ -1431,15 +1567,15 @@ ipcMain.handle("versions:installUnofficial", async (_e, versionId: string, downl
           });
           console.log(`[MurFlame] Fabric installed: ${versionId}`);
           break;
-          
+
         case "neoforge":
         case "quilt":
           throw new Error(`${data.loader === "neoforge" ? "NeoForge" : "Quilt"} временно недоступен. Пожалуйста, используйте Forge или Fabric.`);
-          
+
         default:
           throw new Error(`Неподдерживаемый мод-лоадер: ${data.loader}`);
       }
-      
+
       finalVersionId = versionId || data.versionId;
     }
 
@@ -1450,22 +1586,22 @@ ipcMain.handle("versions:installUnofficial", async (_e, versionId: string, downl
       notes: data.notes,
       loader: data.loader || "vanilla",
     });
-    
+
     // Создаём папку для экземпляра
     const instanceFolder = await createInstanceFolder(settings.gameDir, instance);
     instance.instanceFolder = path.basename(instanceFolder);
-    
+
     // Сохраняем ID экземпляра в папке
     await fs.writeFile(path.join(instanceFolder, ".instance_id"), instance.id);
-    
+
     const modsDir = path.join(instanceFolder, "mods");
-    
+
     // Установка Sodium + Iris для Fabric
     if (data.withSodiumIris && data.loader === "fabric") {
       send("launch:progress", { stage: "mods", percent: 70, message: "Установка Sodium + Iris..." } as LaunchProgress);
-      
+
       const baseVersion = data.versionId.match(/^(\d+\.\d+(?:\.\d+)?)/)?.[1] || data.versionId;
-      
+
       const getModrinthDownloadUrl = async (projectId: string, gameVersion: string, loader: string) => {
         try {
           const url = `https://api.modrinth.com/v2/project/${projectId}/version`;
@@ -1483,18 +1619,18 @@ ipcMain.handle("versions:installUnofficial", async (_e, versionId: string, downl
           return null;
         }
       };
-      
+
       try {
         const sodiumUrl = await getModrinthDownloadUrl("AANobbMI", baseVersion, "fabric");
         if (sodiumUrl) await downloadFile(sodiumUrl, path.join(modsDir, `sodium-${baseVersion}.jar`));
       } catch (e) { console.warn("Sodium download failed:", e); }
-      
+
       try {
         const irisUrl = await getModrinthDownloadUrl("YL57xq9U", baseVersion, "fabric");
         if (irisUrl) await downloadFile(irisUrl, path.join(modsDir, `iris-${baseVersion}.jar`));
       } catch (e) { console.warn("Iris download failed:", e); }
     }
-    
+
     // Установка OptiFine для Forge
     if (data.withOptifine && data.loader === "forge") {
       const baseVersion = data.versionId.match(/^(\d+\.\d+(?:\.\d+)?)/)?.[1] || data.versionId;
@@ -1502,10 +1638,10 @@ ipcMain.handle("versions:installUnofficial", async (_e, versionId: string, downl
       const major = parseInt(versionParts[0]);
       const minor = parseInt(versionParts[1]);
       const versionNum = major === 1 ? minor : major;
-      
+
       if (versionNum >= 15) {
         send("launch:progress", { stage: "mods", percent: 70, message: "Установка OptiFine..." } as LaunchProgress);
-        
+
         const getOptiFineVersion = async (mcVersion: string) => {
           try {
             const url = `https://bmclapi2.bangbang93.com/optifine/${mcVersion}`;
@@ -1521,7 +1657,7 @@ ipcMain.handle("versions:installUnofficial", async (_e, versionId: string, downl
             return null;
           }
         };
-        
+
         try {
           const optifineInfo = await getOptiFineVersion(baseVersion);
           if (optifineInfo) {
@@ -1535,41 +1671,41 @@ ipcMain.handle("versions:installUnofficial", async (_e, versionId: string, downl
         } catch (e) {
           console.warn("[MurFlame] OptiFine download failed:", e);
         }
-        
+
         send("launch:progress", { stage: "mods", percent: 85, message: "OptiFine установлен" } as LaunchProgress);
       } else {
         console.warn(`[MurFlame] OptiFine не поддерживается для Minecraft ${baseVersion} (требуется версия 1.15.2 или выше)`);
         send("launch:progress", { stage: "mods", percent: 70, message: `OptiFine не поддерживается для ${baseVersion}` } as LaunchProgress);
       }
     }
-    
+
     send("launch:progress", { stage: "complete", percent: 100, message: "Установка завершена" } as LaunchProgress);
     return upsertInstance(instance);
   });
-  
+
   ipcMain.handle("instances:update", (_e, id: string, patch: Partial<Omit<GameInstance, "id">>) => {
     const inst = findInstance(id);
     if (!inst) throw new Error("Экземпляр не найден");
     return upsertInstance({ ...inst, ...patch, id: inst.id });
   });
-  
+
   ipcMain.handle("instances:updateLoader", async (_e, id: string, newLoader: InstanceLoader, loaderVersion?: string) => {
     const inst = findInstance(id);
     if (!inst) throw new Error("Экземпляр не найден");
     const settings = resolveSettings();
     const baseVersion = inst.versionId.match(/^(\d+\.\d+(?:\.\d+)?)/)?.[1] || inst.versionId;
-    
+
     inst.loader = newLoader;
     upsertInstance(inst);
-    
+
     if (newLoader !== "vanilla") {
       send("launch:progress", { stage: "modloader", percent: 0, message: `Установка ${newLoader}...` } as LaunchProgress);
-      
+
       const vanillaVersionDir = path.join(settings.gameDir, "versions", baseVersion);
       if (!existsSync(vanillaVersionDir)) {
         await installVersion(baseVersion);
       }
-      
+
       let versionId: string;
       switch (newLoader) {
         case "forge":
@@ -1589,13 +1725,13 @@ ipcMain.handle("versions:installUnofficial", async (_e, versionId: string, downl
         default:
           throw new Error(`Неподдерживаемый мод-лоадер: ${newLoader}`);
       }
-      
+
       inst.versionId = versionId;
       upsertInstance(inst);
     }
     return inst;
   });
-  
+
   ipcMain.handle("instances:remove", async (_e, id: string) => {
     const instances = getInstances().filter((i) => i.id !== id);
     saveInstances(instances);
@@ -1604,7 +1740,7 @@ ipcMain.handle("versions:installUnofficial", async (_e, versionId: string, downl
     }
     return instances;
   });
-  
+
   ipcMain.handle("instances:openFolder", async (_e, id: string) => {
     const inst = findInstance(id);
     if (!inst) throw new Error("Экземпляр не найден");
@@ -1613,45 +1749,45 @@ ipcMain.handle("versions:installUnofficial", async (_e, versionId: string, downl
     await shell.openPath(folderPath);
     return folderPath;
   });
-  
-ipcMain.handle("instances:launch", async (_e, id) => {
-  const inst = findInstance(id);
-  if (!inst) throw new Error("Экземпляр не найден");
-  if (!inst.versionId) throw new Error(`У экземпляра ${id} нет версии`);
-  store.set("selectedInstanceId", id);
-  
-  const settings = resolveSettings();
-  const instancePath = await ensureInstanceFolder(settings.gameDir, inst);
-  
-  // Проверяем, является ли версия неофициальной
-  const isUnofficialVersion = inst.versionId === "alpha-1.2.3_03-remastered";
-  
-  if (isUnofficialVersion) {
-    console.log("[MurFlame] Запуск неофициальной версии через start.bat");
-    
-    // Путь к jar файлу в папке версии
-    const versionDir = path.join(settings.gameDir, "versions", inst.versionId);
-    const sourceJar = path.join(versionDir, "Minecraft.jar");
-    const targetJar = path.join(instancePath, "Minecraft.jar");
-    
-    // Копируем jar файл в папку экземпляра
-    if (existsSync(sourceJar) && !existsSync(targetJar)) {
-      await fs.copyFile(sourceJar, targetJar);
-    }
-    
-    if (!existsSync(targetJar)) {
-      throw new Error("Не найден Minecraft.jar для запуска");
-    }
-    
-    // Копируем natives если есть
-    const sourceNatives = path.join(versionDir, "natives");
-    const targetNatives = path.join(instancePath, "natives");
-    if (existsSync(sourceNatives) && !existsSync(targetNatives)) {
-      await fs.cp(sourceNatives, targetNatives, { recursive: true });
-    }
-    
-    // Создаём start.bat с универсальными путями
-const batContent = `@echo off
+
+  ipcMain.handle("instances:launch", async (_e, id) => {
+    const inst = findInstance(id);
+    if (!inst) throw new Error("Экземпляр не найден");
+    if (!inst.versionId) throw new Error(`У экземпляра ${id} нет версии`);
+    store.set("selectedInstanceId", id);
+
+    const settings = resolveSettings();
+    const instancePath = await ensureInstanceFolder(settings.gameDir, inst);
+
+    // Проверяем, является ли версия неофициальной
+    const isUnofficialVersion = inst.versionId === "alpha-1.2.3_03-remastered";
+
+    if (isUnofficialVersion) {
+      console.log("[MurFlame] Запуск неофициальной версии через start.bat");
+
+      // Путь к jar файлу в папке версии
+      const versionDir = path.join(settings.gameDir, "versions", inst.versionId);
+      const sourceJar = path.join(versionDir, "Minecraft.jar");
+      const targetJar = path.join(instancePath, "Minecraft.jar");
+
+      // Копируем jar файл в папку экземпляра
+      if (existsSync(sourceJar) && !existsSync(targetJar)) {
+        await fs.copyFile(sourceJar, targetJar);
+      }
+
+      if (!existsSync(targetJar)) {
+        throw new Error("Не найден Minecraft.jar для запуска");
+      }
+
+      // Копируем natives если есть
+      const sourceNatives = path.join(versionDir, "natives");
+      const targetNatives = path.join(instancePath, "natives");
+      if (existsSync(sourceNatives) && !existsSync(targetNatives)) {
+        await fs.cp(sourceNatives, targetNatives, { recursive: true });
+      }
+
+      // Создаём start.bat с универсальными путями
+      const batContent = `@echo off
 title Minecraft Alpha 1.2.3_03 Remastered
 cd /d "${instancePath}"
 set JAVA_HOME=%APPDATA%\\.murflame\\java\\java8\\win32\\x64
@@ -1666,43 +1802,43 @@ if errorlevel 1 (
     pause
 )
 pause`;
-    
-    const batPath = path.join(instancePath, "start.bat");
-    await fs.writeFile(batPath, batContent, { encoding: 'utf-8' });
-    console.log("[MurFlame] Created start.bat at:", batPath);
-    
-    // Запускаем .bat файл
-    const { spawn } = await import("child_process");
-    const batProcess = spawn(batPath, [], {
-      cwd: instancePath,
-      shell: true,
-      detached: true,
-      stdio: ["ignore", "pipe", "pipe"]
-    });
-    
-    batProcess.unref();
-    
-    batProcess.stdout?.on("data", (data) => {
-      console.log(`[Minecraft] ${data.toString()}`);
-    });
-    
-    batProcess.stderr?.on("data", (data) => {
-      console.error(`[Minecraft Error] ${data.toString()}`);
-    });
-    
-    batProcess.on("close", (code) => {
-      console.log(`[MurFlame] Minecraft process exited with code ${code}`);
-    });
-    
-    return;
-  }
-  
-  // Для обычных версий используем стандартный запуск
-  return launchGame(inst.versionId, instancePath, inst.loader);
-});
+
+      const batPath = path.join(instancePath, "start.bat");
+      await fs.writeFile(batPath, batContent, { encoding: 'utf-8' });
+      console.log("[MurFlame] Created start.bat at:", batPath);
+
+      // Запускаем .bat файл
+      const { spawn } = await import("child_process");
+      const batProcess = spawn(batPath, [], {
+        cwd: instancePath,
+        shell: true,
+        detached: true,
+        stdio: ["ignore", "pipe", "pipe"]
+      });
+
+      batProcess.unref();
+
+      batProcess.stdout?.on("data", (data) => {
+        console.log(`[Minecraft] ${data.toString()}`);
+      });
+
+      batProcess.stderr?.on("data", (data) => {
+        console.error(`[Minecraft Error] ${data.toString()}`);
+      });
+
+      batProcess.on("close", (code) => {
+        console.log(`[MurFlame] Minecraft process exited with code ${code}`);
+      });
+
+      return;
+    }
+
+    // Для обычных версий используем стандартный запуск
+    return launchGame(inst.versionId, instancePath, inst.loader);
+  });
 
   ipcMain.handle("shell:open", (_e, url: string) => shell.openExternal(url));
-  
+
   ipcMain.handle("skin:getAvatar", async (_e, accountId: string) => {
     const acc = store.get("accounts").find((a: Account) => a.id === accountId);
     if (!acc) return "";
@@ -1785,7 +1921,7 @@ pause`;
       await fs.writeFile(dest, buf);
       return saveAccount(updated);
     }
-    
+
     if (acc.type === "ely" && acc.accessToken) {
       await elyChangeSkin(acc.accessToken, filePath, variant);
       if (acc.uuid) {
@@ -1806,7 +1942,7 @@ pause`;
     if (!acc) throw new Error("Аккаунт не найден");
 
     if (acc.localSkinPath && existsSync(acc.localSkinPath)) {
-      await fs.unlink(acc.localSkinPath).catch(() => {});
+      await fs.unlink(acc.localSkinPath).catch(() => { });
     }
     delete acc.localSkinPath;
 
@@ -1837,7 +1973,7 @@ pause`;
         return saveAccount(acc);
       }
     }
-    
+
     if (acc.type === "ely" && acc.accessToken) {
       await elyResetSkin(acc.accessToken);
       if (acc.uuid) {
@@ -1853,92 +1989,92 @@ pause`;
   });
 
   // Плащи
-ipcMain.handle("skin:getCapes", async (_e, accountId: string) => {
-  const accounts = store.get("accounts") as Account[];
-  const acc = accounts.find((a: Account) => a.id === accountId);
-  if (!acc) return [];
-  
-  if (acc.type === "ely" && acc.accessToken) {
-    return await elyGetCapesList(acc.accessToken);
-  }
-  
-  if (acc.type === "microsoft" && acc.accessToken) {
-    try {
-      const refreshed = await refreshMicrosoftToken(acc);
-      const mojang = new MojangClient({});
-      const profile = await mojang.getProfile(refreshed.accessToken!);
-      return (profile.capes || []).map((c: any) => ({
-        id: c.id,
-        name: c.alias || "Cape",
-        url: c.url,
-        owned: true,
-        current: c.state === "ACTIVE"
-      }));
-    } catch (e) {
-      console.warn("Failed to get Microsoft capes:", e);
-      return []; // Возвращаем пустой массив, а не ошибку
-    }
-  }
-  
-  return [];
-});
+  ipcMain.handle("skin:getCapes", async (_e, accountId: string) => {
+    const accounts = store.get("accounts") as Account[];
+    const acc = accounts.find((a: Account) => a.id === accountId);
+    if (!acc) return [];
 
-ipcMain.handle("skin:setOfficialCape", async (_e, accountId: string, capeId: string) => {
-  const accounts = store.get("accounts") as Account[];
-  const acc = accounts.find((a: Account) => a.id === accountId);
-  if (!acc) throw new Error("Аккаунт не найден");
-  
-  if (acc.type === "ely" && acc.accessToken) {
-    await elyEquipCape(acc.accessToken, capeId);
-    if (acc.uuid) {
-      acc.capeUrl = await elyGetCapeUrl(acc.uuid);
+    if (acc.type === "ely" && acc.accessToken) {
+      return await elyGetCapesList(acc.accessToken);
     }
-    return saveAccount(acc);
-  }
-  
-  if (acc.type === "microsoft" && acc.accessToken) {
-    try {
-      const refreshed = await refreshMicrosoftToken(acc);
-      const mojang = new MojangClient({}) as any;
-      
-      // Пытаемся установить плащ через API Mojang
-      if (typeof mojang.setCape === "function") {
-        await mojang.setCape(capeId, refreshed.accessToken!);
-      } else if (typeof mojang.equipCape === "function") {
-        await mojang.equipCape(capeId, refreshed.accessToken!);
-      } else {
-        // Если API не поддерживает плащи, просто обновляем профиль
-        console.warn("[MurFlame] Cape API not available for Microsoft accounts");
+
+    if (acc.type === "microsoft" && acc.accessToken) {
+      try {
+        const refreshed = await refreshMicrosoftToken(acc);
+        const mojang = new MojangClient({});
+        const profile = await mojang.getProfile(refreshed.accessToken!);
+        return (profile.capes || []).map((c: any) => ({
+          id: c.id,
+          name: c.alias || "Cape",
+          url: c.url,
+          owned: true,
+          current: c.state === "ACTIVE"
+        }));
+      } catch (e) {
+        console.warn("Failed to get Microsoft capes:", e);
+        return []; // Возвращаем пустой массив, а не ошибку
       }
-      
-      const updated = await applyProfileToAccount(
-        { ...acc, accessToken: refreshed.accessToken },
-        refreshed.accessToken!
-      );
-      updated.refreshToken = refreshed.refreshToken ?? acc.refreshToken;
-      updated.expiresAt = refreshed.expiresAt ?? acc.expiresAt;
-      return saveAccount(updated);
-    } catch (e) {
-      console.error("Failed to set Microsoft cape:", e);
-      // Не показываем ошибку пользователю, просто возвращаем аккаунт без изменений
-      return acc;
     }
-  }
-  
-  throw new Error("Установка плащей доступна только для ely.by");
-});
+
+    return [];
+  });
+
+  ipcMain.handle("skin:setOfficialCape", async (_e, accountId: string, capeId: string) => {
+    const accounts = store.get("accounts") as Account[];
+    const acc = accounts.find((a: Account) => a.id === accountId);
+    if (!acc) throw new Error("Аккаунт не найден");
+
+    if (acc.type === "ely" && acc.accessToken) {
+      await elyEquipCape(acc.accessToken, capeId);
+      if (acc.uuid) {
+        acc.capeUrl = await elyGetCapeUrl(acc.uuid);
+      }
+      return saveAccount(acc);
+    }
+
+    if (acc.type === "microsoft" && acc.accessToken) {
+      try {
+        const refreshed = await refreshMicrosoftToken(acc);
+        const mojang = new MojangClient({}) as any;
+
+        // Пытаемся установить плащ через API Mojang
+        if (typeof mojang.setCape === "function") {
+          await mojang.setCape(capeId, refreshed.accessToken!);
+        } else if (typeof mojang.equipCape === "function") {
+          await mojang.equipCape(capeId, refreshed.accessToken!);
+        } else {
+          // Если API не поддерживает плащи, просто обновляем профиль
+          console.warn("[MurFlame] Cape API not available for Microsoft accounts");
+        }
+
+        const updated = await applyProfileToAccount(
+          { ...acc, accessToken: refreshed.accessToken },
+          refreshed.accessToken!
+        );
+        updated.refreshToken = refreshed.refreshToken ?? acc.refreshToken;
+        updated.expiresAt = refreshed.expiresAt ?? acc.expiresAt;
+        return saveAccount(updated);
+      } catch (e) {
+        console.error("Failed to set Microsoft cape:", e);
+        // Не показываем ошибку пользователю, просто возвращаем аккаунт без изменений
+        return acc;
+      }
+    }
+
+    throw new Error("Установка плащей доступна только для ely.by");
+  });
 
   ipcMain.handle("skin:resetCape", async (_e, accountId: string) => {
     const accounts = store.get("accounts") as Account[];
     const acc = accounts.find((a: Account) => a.id === accountId);
     if (!acc) throw new Error("Аккаунт не найден");
-    
+
     if (acc.type === "ely" && acc.accessToken) {
       await elyResetCape(acc.accessToken!);
       acc.capeUrl = null;
       return saveAccount(acc);
     }
-    
+
     if (acc.type === "microsoft" && acc.accessToken) {
       try {
         const refreshed = await refreshMicrosoftToken(acc);
@@ -1958,7 +2094,7 @@ ipcMain.handle("skin:setOfficialCape", async (_e, accountId: string, capeId: str
         throw new Error("Не удалось сбросить плащ");
       }
     }
-    
+
     throw new Error("Сброс плаща доступен только для ely.by и Microsoft");
   });
 
@@ -1969,22 +2105,22 @@ ipcMain.handle("skin:setOfficialCape", async (_e, accountId: string, capeId: str
       if (loader && loader !== "vanilla") {
         facetsList.push([`categories:${loader.toLowerCase()}`]);
       }
-      
+
       const facetsParam = encodeURIComponent(JSON.stringify(facetsList));
       const queryParam = encodeURIComponent(query || "");
       const limitParam = limit || 20;
       const offsetParam = offset || 0;
-      
+
       const url = `https://api.modrinth.com/v2/search?query=${queryParam}&facets=${facetsParam}&offset=${offsetParam}&limit=${limitParam}`;
       console.log(`[MurFlame] Modrinth Search: ${url}`);
-      
+
       const response = await fetch(url, {
         headers: { "User-Agent": "MurFlame-Launcher/1.0" }
       });
       if (!response.ok) {
         throw new Error(`Modrinth API search returned ${response.status}`);
       }
-      
+
       const data = await response.json();
       const hits = data.hits.map((h: any) => ({
         id: h.project_id,
@@ -1998,7 +2134,7 @@ ipcMain.handle("skin:setOfficialCape", async (_e, accountId: string, capeId: str
         categories: h.categories,
         date_modified: h.date_modified,
       }));
-      
+
       return {
         hits,
         total_hits: data.total_hits || 0
@@ -2036,51 +2172,51 @@ ipcMain.handle("skin:setOfficialCape", async (_e, accountId: string, capeId: str
       if (!inst) {
         throw new Error(`Instance not found: ${instanceId}`);
       }
-      
+
       const settings = resolveSettings();
       const instanceFolder = await ensureInstanceFolder(settings.gameDir, inst);
       const modsDir = path.join(instanceFolder, "mods");
-      
+
       if (!existsSync(modsDir)) {
         await fs.mkdir(modsDir, { recursive: true });
       }
-      
+
       const mcVersion = inst.mcVersion;
       const loader = inst.loader === "vanilla" ? "fabric" : inst.loader;
-      
+
       const url = `https://api.modrinth.com/v2/project/${projectId}/version`;
       console.log(`[MurFlame] Querying Modrinth version for ${projectId} (mc: ${mcVersion}, loader: ${loader})`);
       const response = await fetch(`${url}?game_versions=["${mcVersion}"]&loaders=["${loader.toLowerCase()}"]`, {
         headers: { "User-Agent": "MurFlame-Launcher/1.0" }
       });
-      
+
       if (!response.ok) {
         throw new Error(`Modrinth API version lookup failed for project ${projectId}: ${response.status}`);
       }
-      
+
       const versions = await response.json();
       if (!versions?.length) {
         throw new Error(`No compatible version found for MC ${mcVersion} and loader ${loader}`);
       }
-      
+
       const versionData = versions[0];
       const file = versionData.files.find((f: any) => f.primary) || versionData.files[0];
       if (!file) {
         throw new Error(`No files found in compatible version ${versionData.name}`);
       }
-      
+
       const downloadUrl = file.url;
       const fileName = file.filename;
       const destination = path.join(modsDir, fileName);
-      
+
       console.log(`[MurFlame] Downloading mod from ${downloadUrl} to ${destination}`);
       await downloadFile(downloadUrl, destination);
-      
+
       // Save to installed mods map
       const modMap = await loadInstalledModsMap(instanceFolder);
       modMap[`modrinth:${projectId}`] = fileName;
       await saveInstalledModsMap(instanceFolder, modMap);
-      
+
       console.log(`[MurFlame] Mod installed successfully: ${fileName}`);
       return true;
     } catch (e) {
@@ -2094,7 +2230,7 @@ ipcMain.handle("skin:setOfficialCape", async (_e, accountId: string, capeId: str
     try {
       const limitParam = limit || 20;
       const offsetParam = offset || 0;
-      
+
       const params = new URLSearchParams({
         searchFilter: query || "",
         pageSize: limitParam.toString(),
@@ -2102,25 +2238,25 @@ ipcMain.handle("skin:setOfficialCape", async (_e, accountId: string, capeId: str
         gameId: "432",
         classId: "6",
       });
-      
+
       if (version) params.set("gameVersion", version);
       if (loader && loader !== "vanilla") params.set("modLoaderTypes", loader.toLowerCase());
-      
+
       const url = `https://api.curseforge.com/v1/mods/search?${params.toString()}`;
       console.log(`[MurFlame] CurseForge Search: ${url}`);
-      
+
       const response = await fetch(url, {
-        headers: { 
+        headers: {
           "User-Agent": "MurFlame-Launcher/1.0",
           "Accept": "application/json",
           "x-api-key": CURSEFORGE_API_KEY
         }
       });
-      
+
       if (!response.ok) {
         throw new Error(`CurseForge API search returned ${response.status}`);
       }
-      
+
       const data = await response.json();
       const hits = (data.data || []).map((mod: any) => ({
         id: mod.id.toString(),
@@ -2136,7 +2272,7 @@ ipcMain.handle("skin:setOfficialCape", async (_e, accountId: string, capeId: str
         latest_file_id: mod.latestFiles?.[0]?.id?.toString(),
         latest_file_name: mod.latestFiles?.[0]?.fileName,
       }));
-      
+
       return {
         hits,
         total_hits: data.pagination?.totalCount || 0
@@ -2155,43 +2291,43 @@ ipcMain.handle("skin:setOfficialCape", async (_e, accountId: string, capeId: str
       if (!inst) {
         throw new Error(`Instance not found: ${instanceId}`);
       }
-      
+
       const settings = resolveSettings();
       const instanceFolder = await ensureInstanceFolder(settings.gameDir, inst);
       const modsDir = path.join(instanceFolder, "mods");
-      
+
       if (!existsSync(modsDir)) {
         await fs.mkdir(modsDir, { recursive: true });
       }
-      
+
       const url = `https://api.curseforge.com/v1/mods/${projectId}/files/${fileId}/download-url`;
       console.log(`[MurFlame] Querying CurseForge download URL for project ${projectId} file ${fileId}`);
       const response = await fetch(url, {
-        headers: { 
+        headers: {
           "User-Agent": "MurFlame-Launcher/1.0",
           "Accept": "application/json",
           "x-api-key": CURSEFORGE_API_KEY
         }
       });
-      
+
       if (!response.ok) {
         throw new Error(`CurseForge API download URL lookup failed: ${response.status}`);
       }
-      
+
       const downloadData = await response.json();
       const downloadUrl = downloadData.data;
-      
+
       const fileName = path.basename(new URL(downloadUrl).pathname);
       const destination = path.join(modsDir, fileName);
-      
+
       console.log(`[MurFlame] Downloading mod from ${downloadUrl} to ${destination}`);
       await downloadFile(downloadUrl, destination);
-      
+
       // Save to installed mods map
       const modMap = await loadInstalledModsMap(instanceFolder);
       modMap[`curseforge:${projectId}`] = fileName;
       await saveInstalledModsMap(instanceFolder, modMap);
-      
+
       console.log(`[MurFlame] Mod installed successfully: ${fileName}`);
       return true;
     } catch (e) {
@@ -2208,17 +2344,17 @@ ipcMain.handle("skin:setOfficialCape", async (_e, accountId: string, capeId: str
       if (!inst) {
         throw new Error(`Instance not found: ${instanceId}`);
       }
-      
+
       const settings = resolveSettings();
       const instanceFolder = await ensureInstanceFolder(settings.gameDir, inst);
       const modsDir = path.join(instanceFolder, "mods");
-      
+
       const modMap = await loadInstalledModsMap(instanceFolder);
-      
+
       if (!existsSync(modsDir)) {
         return { files: [], map: modMap };
       }
-      
+
       const files = await fs.readdir(modsDir);
       const modFiles = files.filter(file => file.endsWith(".jar") || file.endsWith(".litemod"));
       return { files: modFiles, map: modMap };
@@ -2235,15 +2371,15 @@ ipcMain.handle("skin:setOfficialCape", async (_e, accountId: string, capeId: str
       if (!inst) {
         throw new Error(`Instance not found: ${instanceId}`);
       }
-      
+
       const settings = resolveSettings();
       const instanceFolder = await ensureInstanceFolder(settings.gameDir, inst);
       const modsDir = path.join(instanceFolder, "mods");
       const modPath = path.join(modsDir, fileName);
-      
+
       if (existsSync(modPath)) {
         await fs.unlink(modPath);
-        
+
         // Remove from map
         const modMap = await loadInstalledModsMap(instanceFolder);
         if (projectKey) {
@@ -2258,11 +2394,11 @@ ipcMain.handle("skin:setOfficialCape", async (_e, accountId: string, capeId: str
           }
         }
         await saveInstalledModsMap(instanceFolder, modMap);
-        
+
         console.log(`[MurFlame] Mod removed successfully: ${fileName}`);
         return true;
       }
-      
+
       return false;
     } catch (e) {
       console.error("[MurFlame] Remove mod error:", e);
